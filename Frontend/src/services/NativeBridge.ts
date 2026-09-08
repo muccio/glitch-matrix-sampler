@@ -4,11 +4,12 @@ declare global {
   interface Window {
     __JUCE__?: {
       backend?: {
-        emit?: (eventName: string, ...args: any[]) => void;
-        addEventListener?: (eventName: string, callback: (...args: any[]) => void) => void;
-        removeEventListener?: (eventName: string, callback: (...args: any[]) => void) => void;
+        emitEvent?: (eventId: string, payload: any) => void;
+        addEventListener?: (eventId: string, callback: (...args: any[]) => void) => [string, number] | void;
+        removeEventListener?: (token: any) => void;
         [key: string]: any;
       };
+      initialisationData?: Record<string, any>;
     };
   }
 }
@@ -17,11 +18,56 @@ type StateListener = (state: GlobalState) => void;
 type StatsListener = (stats: VoiceStats) => void;
 type WaveformListener = (sourceId: number, peaks: WaveformPeak[]) => void;
 
+class PromiseHandler {
+  private lastPromiseId = 1;
+  private promises = new Map<number, { resolve: (val: any) => void; reject: (err: any) => void }>();
+  private isAttached = false;
+
+  public attach() {
+    if (this.isAttached) return;
+    if (typeof window !== 'undefined' && window.__JUCE__?.backend?.addEventListener) {
+      window.__JUCE__.backend.addEventListener(
+        "__juce__complete",
+        (payload: any) => {
+          try {
+            const data = typeof payload === 'string' ? JSON.parse(payload) : payload;
+            const promiseId = data.promiseId;
+            const result = data.result;
+            if (this.promises.has(promiseId)) {
+              this.promises.get(promiseId)!.resolve(result);
+              this.promises.delete(promiseId);
+            }
+          } catch (e) {
+            console.error('[NativeBridge] Failed to handle __juce__complete:', e);
+          }
+        }
+      );
+      this.isAttached = true;
+    }
+  }
+
+  public createPromise(): [number, Promise<any>] {
+    const promiseId = this.lastPromiseId++;
+    const promise = new Promise<any>((resolve, reject) => {
+      this.promises.set(promiseId, { resolve, reject });
+      // Set timeout in case backend fails
+      setTimeout(() => {
+        if (this.promises.has(promiseId)) {
+          this.promises.delete(promiseId);
+          reject(new Error(`Promise ${promiseId} timed out`));
+        }
+      }, 5000);
+    });
+    return [promiseId, promise];
+  }
+}
+
 class NativeBridgeService {
-  private isInsideJuce: boolean = false;
+  private promiseHandler = new PromiseHandler();
   private stateListeners: Set<StateListener> = new Set();
   private statsListeners: Set<StatsListener> = new Set();
   private waveformListeners: Set<WaveformListener> = new Set();
+  private isConnectedToJuce = false;
 
   // Mock State for standalone web browser preview
   private mockState: GlobalState = {
@@ -58,74 +104,6 @@ class NativeBridgeService {
         waveform: 0,
         pulseWidth: 0.5,
         glitchMorph: 0.2
-      },
-      {
-        id: 2,
-        name: "Poisson Clicker",
-        type: "Noise",
-        assignedNote: 60,
-        chokeGroup: 1,
-        muted: false,
-        soloed: false,
-        gain: 0.9,
-        pan: 0.15,
-        pitchSemi: 12,
-        pitchFine: 0,
-        attackMs: 0.1,
-        holdMs: 0.0,
-        decayMs: 25,
-        sustain: 0.0,
-        releaseMs: 10,
-        curve: -0.9,
-        bitDepth: 3,
-        bitcrushMix: 0.7,
-        downsampleHz: 12000,
-        downsampleMix: 0.3,
-        stutterHz: 16,
-        stutterDuty: 0.5,
-        stutterMix: 0.0,
-        stutterSync: false,
-        stutterDivision: 2,
-        noiseType: 2,
-        crackleDensity: 2400,
-        hashRate: 4400
-      },
-      {
-        id: 3,
-        name: "IDM Micro-Sample",
-        type: "Sample",
-        assignedNote: -1,
-        chokeGroup: 2,
-        muted: false,
-        soloed: false,
-        gain: 0.8,
-        pan: -0.2,
-        pitchSemi: 0,
-        pitchFine: 0,
-        attackMs: 1.0,
-        holdMs: 0.0,
-        decayMs: 200,
-        sustain: 0.7,
-        releaseMs: 80,
-        curve: -0.5,
-        bitDepth: 12,
-        bitcrushMix: 0.4,
-        downsampleHz: 8000,
-        downsampleMix: 0.5,
-        stutterHz: 32,
-        stutterDuty: 0.6,
-        stutterMix: 0.65,
-        stutterSync: true,
-        stutterDivision: 3,
-        filePath: "drum_break_amen_glitch.wav",
-        startPoint: 0.12,
-        endPoint: 0.85,
-        reverse: false,
-        speed: 1.2,
-        microLoop: true,
-        loopStart: 0.25,
-        loopLengthMs: 35,
-        crossfadeMs: 3.5
       }
     ]
   };
@@ -135,61 +113,103 @@ class NativeBridgeService {
   }
 
   private init() {
-    if (typeof window !== 'undefined' && window.__JUCE__ && window.__JUCE__.backend) {
-      this.isInsideJuce = true;
-      const backend = window.__JUCE__.backend;
+    this.checkJuceConnection();
+  }
 
-      if (backend.addEventListener) {
-        backend.addEventListener('stateSync', (payload: any) => {
-          try {
-            const data: GlobalState = typeof payload === 'string' ? JSON.parse(payload) : payload;
-            this.notifyStateListeners(data);
-          } catch (e) {
-            console.error('[NativeBridge] Failed to parse stateSync:', e);
-          }
-        });
+  private checkJuceConnection() {
+    const tryConnect = () => {
+      if (typeof window !== 'undefined' && window.__JUCE__?.backend?.emitEvent) {
+        if (!this.isConnectedToJuce) {
+          this.isConnectedToJuce = true;
+          console.log('[NativeBridge] Connected to JUCE 8 WebBrowser backend.');
 
-        backend.addEventListener('voiceStats', (payload: any) => {
-          try {
-            const data: VoiceStats = typeof payload === 'string' ? JSON.parse(payload) : payload;
-            this.statsListeners.forEach(cb => cb(data));
-          } catch (e) {
-            console.error('[NativeBridge] Failed to parse voiceStats:', e);
-          }
-        });
+          const backend = window.__JUCE__.backend;
+          this.promiseHandler.attach();
 
-        backend.addEventListener('sampleWaveform', (sourceId: number, peaksPayload: any) => {
-          try {
-            const peaks: WaveformPeak[] = typeof peaksPayload === 'string' ? JSON.parse(peaksPayload) : peaksPayload;
-            this.waveformListeners.forEach(cb => cb(sourceId, peaks));
-          } catch (e) {
-            console.error('[NativeBridge] Failed to parse sampleWaveform:', e);
+          if (backend.addEventListener) {
+            backend.addEventListener('stateSync', (payload: any) => {
+              try {
+                const data: GlobalState = typeof payload === 'string' ? JSON.parse(payload) : payload;
+                this.notifyStateListeners(data);
+              } catch (e) {
+                console.error('[NativeBridge] Failed to parse stateSync:', e);
+              }
+            });
+
+            backend.addEventListener('voiceStats', (payload: any) => {
+              try {
+                const data: VoiceStats = typeof payload === 'string' ? JSON.parse(payload) : payload;
+                this.statsListeners.forEach(cb => cb(data));
+              } catch (e) {
+                console.error('[NativeBridge] Failed to parse voiceStats:', e);
+              }
+            });
+
+            backend.addEventListener('sampleWaveform', (peaksPayload: any) => {
+              try {
+                const peaks: WaveformPeak[] = typeof peaksPayload === 'string' ? JSON.parse(peaksPayload) : peaksPayload;
+                // Default to selected source or first
+                this.waveformListeners.forEach(cb => cb(1, peaks));
+              } catch (e) {
+                console.error('[NativeBridge] Failed to parse sampleWaveform:', e);
+              }
+            });
           }
-        });
+
+          // Request initial state from C++
+          this.requestState();
+        }
+        return true;
       }
-    } else {
-      console.log('[NativeBridge] Running in standalone web browser mode (Mock IPC active).');
-      // Simulate periodic audio metering in browser
-      setInterval(() => {
-        this.statsListeners.forEach(cb => cb({
-          activeVoices: Math.floor(Math.random() * 4),
-          peakL: Math.random() * 0.7,
-          peakR: Math.random() * 0.7
-        }));
-      }, 100);
+      return false;
+    };
+
+    if (!tryConnect()) {
+      let attempts = 0;
+      const timer = setInterval(() => {
+        attempts++;
+        if (tryConnect() || attempts > 60) {
+          clearInterval(timer);
+          if (!this.isConnectedToJuce) {
+            console.log('[NativeBridge] JUCE backend not found. Running in browser mock mode.');
+            // Simulate metering in browser
+            setInterval(() => {
+              this.statsListeners.forEach(cb => cb({
+                activeVoices: Math.floor(Math.random() * 3),
+                peakL: Math.random() * 0.6,
+                peakR: Math.random() * 0.6
+              }));
+            }, 100);
+          }
+        }
+      }, 50);
     }
   }
 
-  private callNative(fnName: string, ...args: any[]) {
-    if (this.isInsideJuce && window.__JUCE__?.backend) {
-      const backend = window.__JUCE__.backend;
-      if (typeof backend[fnName] === 'function') {
-        backend[fnName](...args);
-      } else if (typeof backend.emit === 'function') {
-        backend.emit(fnName, ...args);
+  private async callNative(fnName: string, ...args: any[]): Promise<any> {
+    const juceBackend = (typeof window !== 'undefined' && window.__JUCE__?.backend);
+
+    if (juceBackend && typeof juceBackend.emitEvent === 'function') {
+      const [promiseId, promise] = this.promiseHandler.createPromise();
+
+      juceBackend.emitEvent("__juce__invoke", {
+        name: fnName,
+        params: args,
+        resultId: promiseId,
+      });
+
+      try {
+        const result = await promise;
+        // If result contains the full state object, update immediately
+        if (result && typeof result === 'object' && Array.isArray(result.sources)) {
+          this.notifyStateListeners(result as GlobalState);
+        }
+        return result;
+      } catch (err) {
+        console.warn(`[NativeBridge] callNative '${fnName}' warning/error:`, err);
       }
     } else {
-      // Mock logic in browser
+      // Mock logic in standalone browser
       this.handleMockCall(fnName, args);
     }
   }
@@ -288,6 +308,10 @@ class NativeBridgeService {
         }
         break;
       }
+      case 'requestState': {
+        this.notifyStateListeners({ ...this.mockState });
+        break;
+      }
     }
   }
 
@@ -345,11 +369,7 @@ class NativeBridgeService {
   }
 
   public requestState() {
-    if (this.isInsideJuce) {
-      this.callNative('requestState');
-    } else {
-      this.notifyStateListeners({ ...this.mockState });
-    }
+    this.callNative('requestState');
   }
 
   public subscribeState(listener: StateListener): () => void {

@@ -72,13 +72,13 @@ juce::WebBrowserComponent::Options WebBridge::setupOptions(
         if (newSrc)
         {
             proc.getVoiceManager().addSource(newSrc);
-            if (auto* b = getBrowserFn())
-            {
-                auto stateVar = StateSerializer::serializeStateToVar(proc.getVoiceManager());
-                b->emitEventIfBrowserIsVisible("stateSync", stateVar);
-            }
         }
-        completion(juce::var(newId));
+        auto stateVar = StateSerializer::serializeStateToVar(proc.getVoiceManager());
+        if (auto* b = getBrowserFn())
+        {
+            b->emitEventIfBrowserIsVisible("stateSync", stateVar);
+        }
+        completion(stateVar);
     });
 
     // 2. removeSource(sourceId)
@@ -86,21 +86,14 @@ juce::WebBrowserComponent::Options WebBridge::setupOptions(
         if (args.size() > 0)
         {
             int id = static_cast<int>(args[0]);
-            bool ok = proc.getVoiceManager().removeSource(id);
-            if (ok)
-            {
-                if (auto* b = getBrowserFn())
-                {
-                    auto stateVar = StateSerializer::serializeStateToVar(proc.getVoiceManager());
-                    b->emitEventIfBrowserIsVisible("stateSync", stateVar);
-                }
-            }
-            completion(juce::var(ok));
+            proc.getVoiceManager().removeSource(id);
         }
-        else
+        auto stateVar = StateSerializer::serializeStateToVar(proc.getVoiceManager());
+        if (auto* b = getBrowserFn())
         {
-            completion(juce::var(false));
+            b->emitEventIfBrowserIsVisible("stateSync", stateVar);
         }
+        completion(stateVar);
     });
 
     // 3. cloneSource(sourceId)
@@ -108,19 +101,14 @@ juce::WebBrowserComponent::Options WebBridge::setupOptions(
         if (args.size() > 0)
         {
             int id = static_cast<int>(args[0]);
-            auto cloned = proc.getVoiceManager().cloneSource(id);
-            if (cloned)
-            {
-                if (auto* b = getBrowserFn())
-                {
-                    auto stateVar = StateSerializer::serializeStateToVar(proc.getVoiceManager());
-                    b->emitEventIfBrowserIsVisible("stateSync", stateVar);
-                }
-                completion(juce::var(cloned->getId()));
-                return;
-            }
+            proc.getVoiceManager().cloneSource(id);
         }
-        completion(juce::var(0));
+        auto stateVar = StateSerializer::serializeStateToVar(proc.getVoiceManager());
+        if (auto* b = getBrowserFn())
+        {
+            b->emitEventIfBrowserIsVisible("stateSync", stateVar);
+        }
+        completion(stateVar);
     });
 
     // 4. updateParameter(sourceId, paramId, value)
@@ -326,7 +314,7 @@ juce::WebBrowserComponent::Options WebBridge::setupOptions(
                 );
 
                 chooser->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
-                    [&proc, getBrowserFn, id, sm, chooser](const juce::FileChooser& fc) {
+                    [&proc, getBrowserFn, sm, chooser](const juce::FileChooser& fc) {
                         auto result = fc.getResult();
                         if (result.existsAsFile())
                         {
@@ -363,13 +351,13 @@ juce::WebBrowserComponent::Options WebBridge::setupOptions(
         {
             int idx = static_cast<int>(args[0]);
             StateSerializer::loadFactoryPreset(idx, proc.getVoiceManager(), &proc.getFormatManager());
-            if (auto* b = getBrowserFn())
-            {
-                auto stateVar = StateSerializer::serializeStateToVar(proc.getVoiceManager());
-                b->emitEventIfBrowserIsVisible("stateSync", stateVar);
-            }
         }
-        completion(juce::var(true));
+        auto stateVar = StateSerializer::serializeStateToVar(proc.getVoiceManager());
+        if (auto* b = getBrowserFn())
+        {
+            b->emitEventIfBrowserIsVisible("stateSync", stateVar);
+        }
+        completion(stateVar);
     });
 
     // 9. noteOn(note, velocity)
@@ -395,12 +383,12 @@ juce::WebBrowserComponent::Options WebBridge::setupOptions(
 
     // 11. requestState()
     options = options.withNativeFunction("requestState", [&proc, getBrowserFn](const juce::Array<juce::var>&, juce::WebBrowserComponent::NativeFunctionCompletion completion) {
+        auto stateVar = StateSerializer::serializeStateToVar(proc.getVoiceManager());
         if (auto* b = getBrowserFn())
         {
-            auto stateVar = StateSerializer::serializeStateToVar(proc.getVoiceManager());
             b->emitEventIfBrowserIsVisible("stateSync", stateVar);
         }
-        completion(juce::var(true));
+        completion(stateVar);
     });
 
     return options;

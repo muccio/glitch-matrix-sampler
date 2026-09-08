@@ -51,6 +51,8 @@ void GlitchMatrixSamplerAudioProcessorEditor::resized()
     if (webBrowser != nullptr)
     {
         webBrowser->setBounds(getLocalBounds());
+        if (webBridge != nullptr)
+            webBridge->sendStateSync();
     }
 }
 
