@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { EnvelopeData } from '../types/matrix';
 
 interface EnvelopeEditorProps {
@@ -8,8 +8,57 @@ interface EnvelopeEditorProps {
 
 export const EnvelopeEditor: React.FC<EnvelopeEditorProps> = ({ envelope, onChange }) => {
   const svgRef = useRef<SVGSVGElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const [editingParam, setEditingParam] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState<string>('');
 
   const { attackMs, holdMs, decayMs, sustain, releaseMs, curve } = envelope;
+
+  useEffect(() => {
+    if (editingParam && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [editingParam]);
+
+  const startEdit = (paramId: string, initialVal: number | string) => {
+    setEditingParam(paramId);
+    setEditValue(String(initialVal));
+  };
+
+  const cancelEdit = () => {
+    setEditingParam(null);
+  };
+
+  const commitEdit = (paramId: string) => {
+    if (!editingParam) return;
+    const cleanStr = editValue.trim().toLowerCase().replace('ms', '').replace('%', '');
+    let parsed = parseFloat(cleanStr);
+
+    if (paramId === 'curve') {
+      const upper = editValue.trim().toUpperCase();
+      if (upper === 'EXP') parsed = -0.6;
+      else if (upper === 'LIN') parsed = 0.0;
+      else if (upper === 'LOG') parsed = 0.6;
+    }
+
+    if (!isNaN(parsed)) {
+      let finalVal = parsed;
+      if (paramId === 'attackMs') finalVal = Math.max(0.05, Math.min(5000, parsed));
+      else if (paramId === 'holdMs') finalVal = Math.max(0, Math.min(2000, parsed));
+      else if (paramId === 'decayMs') finalVal = Math.max(0.1, Math.min(10000, parsed));
+      else if (paramId === 'sustain') {
+        if (parsed > 1.0 || editValue.includes('%')) finalVal = parsed / 100.0;
+        finalVal = Math.max(0, Math.min(1, finalVal));
+      }
+      else if (paramId === 'releaseMs') finalVal = Math.max(0.1, Math.min(10000, parsed));
+      else if (paramId === 'curve') finalVal = Math.max(-1.0, Math.min(1.0, parsed));
+
+      onChange(paramId, finalVal);
+    }
+    setEditingParam(null);
+  };
 
   // Coordinate mapping
   // Normalized visual time proportions: Attack (20%), Hold (15%), Decay (25%), Sustain (20%), Release (20%)
@@ -68,9 +117,14 @@ export const EnvelopeEditor: React.FC<EnvelopeEditorProps> = ({ envelope, onChan
           <span className="w-1.5 h-1.5 rounded-full bg-glitch-cyan shadow-neon-cyan animate-pulse" />
           FAST AHDSR ENVELOPE (SUB-MS CLICK READY)
         </span>
-        <span className="text-[10px] text-glitch-dim">
-          Attack: {attackMs < 1 ? `${(attackMs).toFixed(2)}ms` : `${Math.round(attackMs)}ms`} | Decay: {Math.round(decayMs)}ms
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-[9px] text-glitch-cyan/60 hidden sm:inline">
+            (Doppio click per inserire i valori)
+          </span>
+          <span className="text-[10px] text-glitch-dim">
+            Attack: {attackMs < 1 ? `${(attackMs).toFixed(2)}ms` : `${Math.round(attackMs)}ms`} | Decay: {Math.round(decayMs)}ms
+          </span>
+        </div>
       </div>
 
       {/* SVG Canvas visualizer */}
@@ -104,14 +158,35 @@ export const EnvelopeEditor: React.FC<EnvelopeEditorProps> = ({ envelope, onChan
         </svg>
       </div>
 
-      {/* Numeric Parameter Dials / Sliders */}
+      {/* Numeric Parameter Dials / Sliders with Double-Click Text Input */}
       <div className="grid grid-cols-6 gap-2 text-center text-[10px]">
         {/* ATTACK */}
-        <div className="bg-glitch-surface p-1.5 rounded border border-glitch-border flex flex-col items-center">
-          <span className="text-glitch-dim">ATTACK</span>
-          <span className="font-bold text-glitch-cyan my-0.5">
-            {attackMs < 1.0 ? `${attackMs.toFixed(2)}ms` : `${attackMs.toFixed(0)}ms`}
-          </span>
+        <div
+          className="bg-glitch-surface p-1.5 rounded border border-glitch-border flex flex-col items-center group hover:border-glitch-cyan/60 transition-colors"
+          title="Doppio click per inserire il valore manualmente"
+        >
+          <span className="text-glitch-dim select-none">ATTACK</span>
+          {editingParam === 'attackMs' ? (
+            <input
+              ref={inputRef}
+              type="text"
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') commitEdit('attackMs');
+                else if (e.key === 'Escape') cancelEdit();
+              }}
+              onBlur={() => commitEdit('attackMs')}
+              className="w-14 h-4 my-0.5 text-center text-[10px] bg-glitch-dark border border-glitch-cyan text-glitch-cyan font-bold rounded outline-none shadow-neon-cyan/40 focus:ring-1 focus:ring-glitch-cyan"
+            />
+          ) : (
+            <span
+              onDoubleClick={() => startEdit('attackMs', attackMs < 1.0 ? attackMs.toFixed(2) : attackMs.toFixed(0))}
+              className="font-bold text-glitch-cyan my-0.5 cursor-pointer hover:underline hover:text-white transition-colors select-none"
+            >
+              {attackMs < 1.0 ? `${attackMs.toFixed(2)}ms` : `${attackMs.toFixed(0)}ms`}
+            </span>
+          )}
           <input
             type="range"
             min="0.05"
@@ -124,11 +199,32 @@ export const EnvelopeEditor: React.FC<EnvelopeEditorProps> = ({ envelope, onChan
         </div>
 
         {/* HOLD */}
-        <div className="bg-glitch-surface p-1.5 rounded border border-glitch-border flex flex-col items-center">
-          <span className="text-glitch-dim">HOLD</span>
-          <span className="font-bold text-glitch-amber my-0.5">
-            {holdMs.toFixed(0)}ms
-          </span>
+        <div
+          className="bg-glitch-surface p-1.5 rounded border border-glitch-border flex flex-col items-center group hover:border-glitch-amber/60 transition-colors"
+          title="Doppio click per inserire il valore manualmente"
+        >
+          <span className="text-glitch-dim select-none">HOLD</span>
+          {editingParam === 'holdMs' ? (
+            <input
+              ref={inputRef}
+              type="text"
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') commitEdit('holdMs');
+                else if (e.key === 'Escape') cancelEdit();
+              }}
+              onBlur={() => commitEdit('holdMs')}
+              className="w-14 h-4 my-0.5 text-center text-[10px] bg-glitch-dark border border-glitch-amber text-glitch-amber font-bold rounded outline-none shadow-neon-amber/40 focus:ring-1 focus:ring-glitch-amber"
+            />
+          ) : (
+            <span
+              onDoubleClick={() => startEdit('holdMs', holdMs.toFixed(0))}
+              className="font-bold text-glitch-amber my-0.5 cursor-pointer hover:underline hover:text-white transition-colors select-none"
+            >
+              {holdMs.toFixed(0)}ms
+            </span>
+          )}
           <input
             type="range"
             min="0"
@@ -141,11 +237,32 @@ export const EnvelopeEditor: React.FC<EnvelopeEditorProps> = ({ envelope, onChan
         </div>
 
         {/* DECAY */}
-        <div className="bg-glitch-surface p-1.5 rounded border border-glitch-border flex flex-col items-center">
-          <span className="text-glitch-dim">DECAY</span>
-          <span className="font-bold text-glitch-cyan my-0.5">
-            {decayMs.toFixed(0)}ms
-          </span>
+        <div
+          className="bg-glitch-surface p-1.5 rounded border border-glitch-border flex flex-col items-center group hover:border-glitch-cyan/60 transition-colors"
+          title="Doppio click per inserire il valore manualmente"
+        >
+          <span className="text-glitch-dim select-none">DECAY</span>
+          {editingParam === 'decayMs' ? (
+            <input
+              ref={inputRef}
+              type="text"
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') commitEdit('decayMs');
+                else if (e.key === 'Escape') cancelEdit();
+              }}
+              onBlur={() => commitEdit('decayMs')}
+              className="w-14 h-4 my-0.5 text-center text-[10px] bg-glitch-dark border border-glitch-cyan text-glitch-cyan font-bold rounded outline-none shadow-neon-cyan/40 focus:ring-1 focus:ring-glitch-cyan"
+            />
+          ) : (
+            <span
+              onDoubleClick={() => startEdit('decayMs', decayMs.toFixed(0))}
+              className="font-bold text-glitch-cyan my-0.5 cursor-pointer hover:underline hover:text-white transition-colors select-none"
+            >
+              {decayMs.toFixed(0)}ms
+            </span>
+          )}
           <input
             type="range"
             min="1"
@@ -158,11 +275,32 @@ export const EnvelopeEditor: React.FC<EnvelopeEditorProps> = ({ envelope, onChan
         </div>
 
         {/* SUSTAIN */}
-        <div className="bg-glitch-surface p-1.5 rounded border border-glitch-border flex flex-col items-center">
-          <span className="text-glitch-dim">SUSTAIN</span>
-          <span className="font-bold text-glitch-pink my-0.5">
-            {(sustain * 100).toFixed(0)}%
-          </span>
+        <div
+          className="bg-glitch-surface p-1.5 rounded border border-glitch-border flex flex-col items-center group hover:border-glitch-pink/60 transition-colors"
+          title="Doppio click per inserire il valore manualmente"
+        >
+          <span className="text-glitch-dim select-none">SUSTAIN</span>
+          {editingParam === 'sustain' ? (
+            <input
+              ref={inputRef}
+              type="text"
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') commitEdit('sustain');
+                else if (e.key === 'Escape') cancelEdit();
+              }}
+              onBlur={() => commitEdit('sustain')}
+              className="w-14 h-4 my-0.5 text-center text-[10px] bg-glitch-dark border border-glitch-pink text-glitch-pink font-bold rounded outline-none shadow-neon-pink/40 focus:ring-1 focus:ring-glitch-pink"
+            />
+          ) : (
+            <span
+              onDoubleClick={() => startEdit('sustain', (sustain * 100).toFixed(0))}
+              className="font-bold text-glitch-pink my-0.5 cursor-pointer hover:underline hover:text-white transition-colors select-none"
+            >
+              {(sustain * 100).toFixed(0)}%
+            </span>
+          )}
           <input
             type="range"
             min="0"
@@ -175,11 +313,32 @@ export const EnvelopeEditor: React.FC<EnvelopeEditorProps> = ({ envelope, onChan
         </div>
 
         {/* RELEASE */}
-        <div className="bg-glitch-surface p-1.5 rounded border border-glitch-border flex flex-col items-center">
-          <span className="text-glitch-dim">RELEASE</span>
-          <span className="font-bold text-glitch-cyan my-0.5">
-            {releaseMs.toFixed(0)}ms
-          </span>
+        <div
+          className="bg-glitch-surface p-1.5 rounded border border-glitch-border flex flex-col items-center group hover:border-glitch-cyan/60 transition-colors"
+          title="Doppio click per inserire il valore manualmente"
+        >
+          <span className="text-glitch-dim select-none">RELEASE</span>
+          {editingParam === 'releaseMs' ? (
+            <input
+              ref={inputRef}
+              type="text"
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') commitEdit('releaseMs');
+                else if (e.key === 'Escape') cancelEdit();
+              }}
+              onBlur={() => commitEdit('releaseMs')}
+              className="w-14 h-4 my-0.5 text-center text-[10px] bg-glitch-dark border border-glitch-cyan text-glitch-cyan font-bold rounded outline-none shadow-neon-cyan/40 focus:ring-1 focus:ring-glitch-cyan"
+            />
+          ) : (
+            <span
+              onDoubleClick={() => startEdit('releaseMs', releaseMs.toFixed(0))}
+              className="font-bold text-glitch-cyan my-0.5 cursor-pointer hover:underline hover:text-white transition-colors select-none"
+            >
+              {releaseMs.toFixed(0)}ms
+            </span>
+          )}
           <input
             type="range"
             min="1"
@@ -192,11 +351,32 @@ export const EnvelopeEditor: React.FC<EnvelopeEditorProps> = ({ envelope, onChan
         </div>
 
         {/* CURVE SHAPE */}
-        <div className="bg-glitch-surface p-1.5 rounded border border-glitch-border flex flex-col items-center">
-          <span className="text-glitch-dim">CURVE</span>
-          <span className="font-bold text-glitch-green my-0.5">
-            {curve < -0.1 ? 'EXP' : curve > 0.1 ? 'LOG' : 'LIN'}
-          </span>
+        <div
+          className="bg-glitch-surface p-1.5 rounded border border-glitch-border flex flex-col items-center group hover:border-glitch-green/60 transition-colors"
+          title="Doppio click per inserire il valore manualmente (-1 a +1, o EXP / LIN / LOG)"
+        >
+          <span className="text-glitch-dim select-none">CURVE</span>
+          {editingParam === 'curve' ? (
+            <input
+              ref={inputRef}
+              type="text"
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') commitEdit('curve');
+                else if (e.key === 'Escape') cancelEdit();
+              }}
+              onBlur={() => commitEdit('curve')}
+              className="w-14 h-4 my-0.5 text-center text-[10px] bg-glitch-dark border border-glitch-green text-glitch-green font-bold rounded outline-none shadow-neon-green/40 focus:ring-1 focus:ring-glitch-green"
+            />
+          ) : (
+            <span
+              onDoubleClick={() => startEdit('curve', curve.toFixed(2))}
+              className="font-bold text-glitch-green my-0.5 cursor-pointer hover:underline hover:text-white transition-colors select-none"
+            >
+              {curve < -0.1 ? 'EXP' : curve > 0.1 ? 'LOG' : 'LIN'}
+            </span>
+          )}
           <input
             type="range"
             min="-1.0"

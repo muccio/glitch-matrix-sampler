@@ -42,18 +42,8 @@ public:
         vel = std::clamp(velocity, 0.0f, 1.0f);
         startLevel = currentLevel;
         stageSampleCounter = 0;
-
-        // Sub-millisecond click capability (attack time can be as low as 0.05ms)
         stageTotalSamples = msToSamples(attackMs);
-        if (stageTotalSamples <= 1)
-        {
-            currentLevel = 1.0f;
-            enterHold();
-        }
-        else
-        {
-            stage = Stage::Attack;
-        }
+        stage = Stage::Attack;
     }
 
     void noteOff() noexcept
@@ -64,15 +54,7 @@ public:
         startLevel = currentLevel;
         stageSampleCounter = 0;
         stageTotalSamples = msToSamples(releaseMs);
-        if (stageTotalSamples <= 1)
-        {
-            currentLevel = 0.0f;
-            stage = Stage::Idle;
-        }
-        else
-        {
-            stage = Stage::Release;
-        }
+        stage = Stage::Release;
     }
 
     void choke() noexcept
@@ -84,15 +66,7 @@ public:
         startLevel = currentLevel;
         stageSampleCounter = 0;
         stageTotalSamples = msToSamples(0.5f);
-        if (stageTotalSamples <= 1)
-        {
-            currentLevel = 0.0f;
-            stage = Stage::Idle;
-        }
-        else
-        {
-            stage = Stage::ChokeRelease;
-        }
+        stage = Stage::ChokeRelease;
     }
 
     inline float getNextSample() noexcept
@@ -104,7 +78,7 @@ public:
         {
             case Stage::Attack:
             {
-                if (++stageSampleCounter >= stageTotalSamples)
+                if (stageSampleCounter >= stageTotalSamples)
                 {
                     currentLevel = 1.0f;
                     enterHold();
@@ -113,26 +87,28 @@ public:
                 {
                     float t = static_cast<float>(stageSampleCounter) / static_cast<float>(stageTotalSamples);
                     currentLevel = startLevel + (1.0f - startLevel) * applyCurve(t, attackCurve);
+                    ++stageSampleCounter;
                 }
                 break;
             }
 
             case Stage::Hold:
             {
-                if (++stageSampleCounter >= stageTotalSamples)
+                if (stageSampleCounter >= stageTotalSamples)
                 {
                     enterDecay();
                 }
                 else
                 {
                     currentLevel = 1.0f;
+                    ++stageSampleCounter;
                 }
                 break;
             }
 
             case Stage::Decay:
             {
-                if (++stageSampleCounter >= stageTotalSamples)
+                if (stageSampleCounter >= stageTotalSamples)
                 {
                     currentLevel = sustainLevel;
                     stage = Stage::Sustain;
@@ -141,6 +117,7 @@ public:
                 {
                     float t = static_cast<float>(stageSampleCounter) / static_cast<float>(stageTotalSamples);
                     currentLevel = 1.0f - (1.0f - sustainLevel) * applyCurve(t, decayCurve);
+                    ++stageSampleCounter;
                 }
                 break;
             }
@@ -153,7 +130,7 @@ public:
 
             case Stage::Release:
             {
-                if (++stageSampleCounter >= stageTotalSamples)
+                if (stageSampleCounter >= stageTotalSamples)
                 {
                     currentLevel = 0.0f;
                     stage = Stage::Idle;
@@ -162,13 +139,14 @@ public:
                 {
                     float t = static_cast<float>(stageSampleCounter) / static_cast<float>(stageTotalSamples);
                     currentLevel = startLevel * (1.0f - applyCurve(t, releaseCurve));
+                    ++stageSampleCounter;
                 }
                 break;
             }
 
             case Stage::ChokeRelease:
             {
-                if (++stageSampleCounter >= stageTotalSamples)
+                if (stageSampleCounter >= stageTotalSamples)
                 {
                     currentLevel = 0.0f;
                     stage = Stage::Idle;
@@ -176,7 +154,9 @@ public:
                 else
                 {
                     float t = static_cast<float>(stageSampleCounter) / static_cast<float>(stageTotalSamples);
-                    currentLevel = startLevel * (1.0f - t);
+                    float s = t * t * (3.0f - 2.0f * t);
+                    currentLevel = startLevel * (1.0f - s);
+                    ++stageSampleCounter;
                 }
                 break;
             }
@@ -222,7 +202,7 @@ private:
     {
         stageSampleCounter = 0;
         stageTotalSamples = msToSamples(holdMs);
-        if (stageTotalSamples <= 1)
+        if (stageTotalSamples <= 0 || holdMs <= 0.001f)
             enterDecay();
         else
             stage = Stage::Hold;
@@ -232,7 +212,7 @@ private:
     {
         stageSampleCounter = 0;
         stageTotalSamples = msToSamples(decayMs);
-        if (stageTotalSamples <= 1)
+        if (stageTotalSamples <= 0)
         {
             currentLevel = sustainLevel;
             stage = Stage::Sustain;
@@ -243,25 +223,29 @@ private:
         }
     }
 
-    // Morphable curve: -1.0 (exponential) -> 0.0 (linear) -> +1.0 (logarithmic)
+    // Click-free continuous curve with smooth boundary transitions f'(0)=0 and f'(1)=0
     static inline float applyCurve(float t, float curve) noexcept
     {
         t = std::clamp(t, 0.0f, 1.0f);
-        if (std::abs(curve) < 0.01f)
-            return t;
+        if (t <= 0.0f) return 0.0f;
+        if (t >= 1.0f) return 1.0f;
 
-        if (curve > 0.0f)
+        float u = t;
+        if (curve > 0.01f)
         {
-            // Logarithmic / fast rise
-            float p = 1.0f + curve * 4.0f; // 1.0 to 5.0
-            return 1.0f - std::pow(1.0f - t, p);
+            // Logarithmic / punchy fast rise
+            float p = 1.0f + curve * 3.0f;
+            u = 1.0f - std::pow(1.0f - t, p);
         }
-        else
+        else if (curve < -0.01f)
         {
-            // Exponential / slow rise
-            float p = 1.0f + (-curve) * 4.0f; // 1.0 to 5.0
-            return std::pow(t, p);
+            // Exponential / slow start rise
+            float p = 1.0f + (-curve) * 3.0f;
+            u = std::pow(t, p);
         }
+
+        // Hermite smoothstep ensuring zero derivative at t=0 and t=1
+        return u * u * (3.0f - 2.0f * u);
     }
 
     double currentSampleRate = 44100.0;

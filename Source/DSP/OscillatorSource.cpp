@@ -104,6 +104,7 @@ void OscillatorSource::noteOn(int noteNumber, float velocity)
     if (voiceIdx >= 0)
     {
         auto& v = voices[voiceIdx];
+        bool wasActive = v.active && v.envelope.isActive();
         v.noteNumber = noteNumber;
         v.active = true;
 
@@ -111,6 +112,21 @@ void OscillatorSource::noteOn(int noteNumber, float velocity)
                                + (pitchFine.load(std::memory_order_relaxed) * 0.01f);
         double freq = 440.0 * std::pow(2.0, totalSemitones / 12.0);
         v.phaseInc = freq / currentSampleRate;
+
+        // Zero-crossing phase initialization for click-free attack transients
+        if (!wasActive || v.envelope.getCurrentLevel() < 0.001f)
+        {
+            auto wf = getWaveform();
+            switch (wf)
+            {
+                case OscWaveform::Sine:            v.phase = 0.0; break;
+                case OscWaveform::Saw:             v.phase = 0.5; break;
+                case OscWaveform::Triangle:        v.phase = 0.25; break;
+                case OscWaveform::GlitchWavetable: v.phase = 0.0; break;
+                case OscWaveform::Square:
+                default:                           v.phase = 0.0; break;
+            }
+        }
 
         // Apply updated envelope parameters
         v.envelope.setAttackMs(envAttackMs.load(std::memory_order_relaxed));

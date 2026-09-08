@@ -284,6 +284,38 @@ int main()
         std::cout << "  -> PASSED." << std::endl;
     }
 
+    // TEST 7: Zero-Crossing Attack Onset & Click Mitigation Verification
+    {
+        std::cout << "[TEST 7] Testing Zero-Crossing Attack Onset (Click Elimination)..." << std::endl;
+        VoiceManager testVm;
+        testVm.prepare(sampleRate, blockSize);
+
+        for (int wfInt = 0; wfInt <= 4; ++wfInt)
+        {
+            auto osc = std::make_shared<OscillatorSource>(500 + wfInt, "Test Osc");
+            osc->setWaveform(static_cast<OscWaveform>(wfInt));
+            osc->setAttackMs(2.0f);
+            osc->setGain(1.0f);
+            testVm.addSource(osc);
+
+            juce::AudioBuffer<float> buf(2, blockSize);
+            juce::MidiBuffer midi;
+            midi.addEvent(juce::MidiMessage::noteOn(1, 60, (juce::uint8)127), 0);
+
+            testVm.processBlock(buf, midi);
+
+            float s0 = buf.getSample(0, 0);
+            float s1 = buf.getSample(0, 1);
+            ASSERT_TRUE(std::abs(s0) < 0.02f, "First sample at note-on must be near zero-crossing (< 0.02)");
+            ASSERT_TRUE(std::abs(s1 - s0) < 0.25f, "Sample delta at attack onset must not click (< 0.25)");
+
+            testVm.removeSource(500 + wfInt);
+            testVm.collectGarbage();
+        }
+        std::cout << "  -> Verified zero-crossing start & continuous onset across all 5 waveforms." << std::endl;
+        std::cout << "  -> PASSED." << std::endl;
+    }
+
     std::cout << "=================================================" << std::endl;
     std::cout << "  ALL DSP & THREAD-SAFETY TESTS PASSED (100%)    " << std::endl;
     std::cout << "=================================================" << std::endl;
