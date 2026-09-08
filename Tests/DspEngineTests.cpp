@@ -462,6 +462,96 @@ int main()
         std::cout << "  -> PASSED." << std::endl;
     }
 
+    // TEST 9: Single-Click Instant Note-On / Note-Off Survival (Zero Sustain & Click Preservation)
+    {
+        std::cout << "[TEST 9] Testing Single-Click Instant Note-On + Note-Off Survival (Dirac & Zero-Sustain Sines)..." << std::endl;
+        VoiceManager testVm;
+        testVm.prepare(sampleRate, blockSize);
+
+        // 1. Dirac Needle Click with instantaneous noteOn + noteOff at sample 0
+        {
+            auto click = std::make_shared<ClickSource>(1001, "Test Dirac Single Click");
+            click->setClickType(ClickType::Dirac);
+            click->setPulseWidthSamples(4);
+            click->setAttackMs(0.01f);
+            click->setDecayMs(10.0f);
+            click->setSustainLevel(0.0f);
+            click->setReleaseMs(5.0f);
+            click->setGain(1.0f);
+            testVm.addSource(click);
+
+            juce::AudioBuffer<float> buf(2, blockSize);
+            buf.clear();
+            juce::MidiBuffer midi;
+            // Simulate mouse single click: noteOn and noteOff in the exact same buffer at sample 0
+            midi.addEvent(juce::MidiMessage::noteOn(1, 60, (juce::uint8)127), 0);
+            midi.addEvent(juce::MidiMessage::noteOff(1, 60, (juce::uint8)0), 0);
+
+            testVm.processBlock(buf, midi);
+
+            float peak = buf.getMagnitude(0, 0, blockSize);
+            std::cout << "  -> Dirac impulse peak with instant noteOff at sample 0: " << peak << std::endl;
+            ASSERT_TRUE(peak > 0.1f, "Dirac impulse MUST sound on a single click with instant noteOff");
+
+            testVm.removeSource(1001);
+            testVm.collectGarbage();
+        }
+
+        // 2. Sine Oscillator without sustain (sustain = 0.0) with instantaneous noteOn + noteOff at sample 0
+        {
+            auto osc = std::make_shared<OscillatorSource>(1002, "Test Sine No-Sustain Single Click");
+            osc->setWaveform(OscWaveform::Sine);
+            osc->setAttackMs(1.0f);
+            osc->setDecayMs(50.0f);
+            osc->setSustainLevel(0.0f);
+            osc->setReleaseMs(20.0f);
+            osc->setGain(1.0f);
+            testVm.addSource(osc);
+
+            juce::AudioBuffer<float> buf(2, blockSize);
+            buf.clear();
+            juce::MidiBuffer midi;
+            midi.addEvent(juce::MidiMessage::noteOn(1, 60, (juce::uint8)127), 0);
+            midi.addEvent(juce::MidiMessage::noteOff(1, 60, (juce::uint8)0), 0);
+
+            testVm.processBlock(buf, midi);
+
+            float peak = buf.getMagnitude(0, 0, blockSize);
+            std::cout << "  -> Sine (sustain=0) peak with instant noteOff at sample 0: " << peak << std::endl;
+            ASSERT_TRUE(peak > 0.1f, "Sine without sustain MUST sound on a single click with instant noteOff");
+
+            testVm.removeSource(1002);
+            testVm.collectGarbage();
+        }
+
+        // 3. Ultra-short note tap with sustain > 0: Attack must complete to 1.0f before releasing
+        {
+            FastEnvelope env;
+            env.prepare(sampleRate);
+            env.setAttackMs(2.0f);
+            env.setHoldMs(0.0f);
+            env.setDecayMs(100.0f);
+            env.setSustainLevel(0.5f);
+            env.setReleaseMs(50.0f);
+
+            // Call noteOn then noteOff immediately (within 0 samples)
+            env.noteOn(1.0f);
+            env.noteOff();
+
+            float peakDuringAttack = 0.0f;
+            for (int i = 0; i < 300; ++i)
+            {
+                float s = env.getNextSample();
+                if (s > peakDuringAttack) peakDuringAttack = s;
+            }
+
+            std::cout << "  -> FastEnvelope peak reached after instant noteOff during attack: " << peakDuringAttack << std::endl;
+            ASSERT_TRUE(peakDuringAttack > 0.95f, "Envelope must reach peak (1.0f) before releasing even if noteOff occurred during attack");
+        }
+
+        std::cout << "  -> PASSED." << std::endl;
+    }
+
     std::cout << "=================================================" << std::endl;
     std::cout << "  ALL DSP & THREAD-SAFETY TESTS PASSED (100%)    " << std::endl;
     std::cout << "=================================================" << std::endl;

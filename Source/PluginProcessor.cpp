@@ -120,13 +120,15 @@ void GlitchMatrixSamplerAudioProcessor::processBlock(juce::AudioBuffer<float>& b
         int start1, size1, start2, size2;
         uiMidiFifo.prepareToRead(numReady, start1, size1, start2, size2);
 
+        int releaseSample = buffer.getNumSamples() > 1 ? std::min(buffer.getNumSamples() - 1, 32) : 0;
+
         for (int i = 0; i < size1; ++i)
         {
             const auto& ev = uiMidiBuffer[start1 + i];
             if (ev.isNoteOn)
                 midiMessages.addEvent(juce::MidiMessage::noteOn(1, ev.note, ev.velocity), 0);
             else
-                midiMessages.addEvent(juce::MidiMessage::noteOff(1, ev.note, ev.velocity), 0);
+                midiMessages.addEvent(juce::MidiMessage::noteOff(1, ev.note, ev.velocity), releaseSample);
         }
 
         for (int i = 0; i < size2; ++i)
@@ -135,7 +137,7 @@ void GlitchMatrixSamplerAudioProcessor::processBlock(juce::AudioBuffer<float>& b
             if (ev.isNoteOn)
                 midiMessages.addEvent(juce::MidiMessage::noteOn(1, ev.note, ev.velocity), 0);
             else
-                midiMessages.addEvent(juce::MidiMessage::noteOff(1, ev.note, ev.velocity), 0);
+                midiMessages.addEvent(juce::MidiMessage::noteOff(1, ev.note, ev.velocity), releaseSample);
         }
 
         uiMidiFifo.finishedRead(size1 + size2);

@@ -127,11 +127,15 @@ void ClickSource::noteOn(int noteNumber, float velocity)
 
 void ClickSource::noteOff(float /*velocity*/)
 {
-    for (auto& v : voices)
+    // A click is a transient impulse: if sustain is 0 (default), noteOff should not choke the impulse!
+    if (envSustain.load(std::memory_order_relaxed) > 0.001f)
     {
-        if (v.active)
+        for (auto& v : voices)
         {
-            v.envelope.noteOff();
+            if (v.active)
+            {
+                v.envelope.noteOff();
+            }
         }
     }
 }

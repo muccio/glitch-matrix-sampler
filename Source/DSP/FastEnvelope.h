@@ -35,6 +35,7 @@ public:
         stageSampleCounter = 0;
         stageTotalSamples = 0;
         startLevel = 0.0f;
+        noteReleased = false;
     }
 
     void noteOn(float velocity = 1.0f) noexcept
@@ -44,6 +45,7 @@ public:
         stageSampleCounter = 0;
         stageTotalSamples = msToSamples(attackMs);
         stage = Stage::Attack;
+        noteReleased = false;
     }
 
     void noteOff() noexcept
@@ -51,6 +53,22 @@ public:
         if (stage == Stage::Idle)
             return;
 
+        noteReleased = true;
+
+        // If sustain is 0.0 (percussive / one-shot mode):
+        // The decay phase already takes the sound to silence naturally.
+        // We do not abort attack or decay when sustain is zero!
+        if (sustainLevel <= 0.001f)
+            return;
+
+        // If noteOff arrives while still in Attack or Hold:
+        // Do not abort to Release from a near-zero level!
+        // We let the voice reach peak (1.0f) during Attack/Hold,
+        // and advancePostHold() will transition directly to Release.
+        if (stage == Stage::Attack || stage == Stage::Hold)
+            return;
+
+        // In Decay or Sustain: transition to Release from current level
         startLevel = currentLevel;
         stageSampleCounter = 0;
         stageTotalSamples = msToSamples(releaseMs);
@@ -96,7 +114,7 @@ public:
             {
                 if (stageSampleCounter >= stageTotalSamples)
                 {
-                    enterDecay();
+                    advancePostHold();
                 }
                 else
                 {
@@ -110,8 +128,26 @@ public:
             {
                 if (stageSampleCounter >= stageTotalSamples)
                 {
-                    currentLevel = sustainLevel;
-                    stage = Stage::Sustain;
+                    if (sustainLevel <= 0.001f)
+                    {
+                        currentLevel = 0.0f;
+                        stage = Stage::Idle;
+                    }
+                    else
+                    {
+                        currentLevel = sustainLevel;
+                        if (noteReleased)
+                        {
+                            startLevel = currentLevel;
+                            stageSampleCounter = 0;
+                            stageTotalSamples = msToSamples(releaseMs);
+                            stage = Stage::Release;
+                        }
+                        else
+                        {
+                            stage = Stage::Sustain;
+                        }
+                    }
                 }
                 else
                 {
@@ -203,9 +239,28 @@ private:
         stageSampleCounter = 0;
         stageTotalSamples = msToSamples(holdMs);
         if (stageTotalSamples <= 0 || holdMs <= 0.001f)
-            enterDecay();
+            advancePostHold();
         else
             stage = Stage::Hold;
+    }
+
+    void advancePostHold() noexcept
+    {
+        if (noteReleased && sustainLevel > 0.001f)
+        {
+            // Note was already released during Attack or Hold:
+            // Release directly from peak level (1.0f)!
+            startLevel = 1.0f;
+            stageSampleCounter = 0;
+            stageTotalSamples = msToSamples(releaseMs);
+            stage = Stage::Release;
+        }
+        else
+        {
+            // Note is still held OR sustain is 0.0 (percussive one-shot):
+            // Proceed into Decay!
+            enterDecay();
+        }
     }
 
     void enterDecay() noexcept
@@ -214,8 +269,26 @@ private:
         stageTotalSamples = msToSamples(decayMs);
         if (stageTotalSamples <= 0)
         {
-            currentLevel = sustainLevel;
-            stage = Stage::Sustain;
+            if (sustainLevel <= 0.001f)
+            {
+                currentLevel = 0.0f;
+                stage = Stage::Idle;
+            }
+            else
+            {
+                currentLevel = sustainLevel;
+                if (noteReleased)
+                {
+                    startLevel = currentLevel;
+                    stageSampleCounter = 0;
+                    stageTotalSamples = msToSamples(releaseMs);
+                    stage = Stage::Release;
+                }
+                else
+                {
+                    stage = Stage::Sustain;
+                }
+            }
         }
         else
         {
@@ -253,6 +326,7 @@ private:
     float currentLevel = 0.0f;
     float startLevel = 0.0f;
     float vel = 1.0f;
+    bool noteReleased = false;
     int stageSampleCounter = 0;
     int stageTotalSamples = 0;
 

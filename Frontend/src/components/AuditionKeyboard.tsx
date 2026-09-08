@@ -17,18 +17,39 @@ export const AuditionKeyboard: React.FC = () => {
 
   const baseNote = 48 + octaveOffset * 12; // C3 base
 
+  const noteOnTimes = React.useRef<{ [key: number]: number }>({});
+  const noteOffTimeouts = React.useRef<{ [key: number]: any }>({});
+
   const handleNoteOn = (note: number) => {
+    if (noteOffTimeouts.current[note]) {
+      clearTimeout(noteOffTimeouts.current[note]);
+      delete noteOffTimeouts.current[note];
+    }
+    noteOnTimes.current[note] = Date.now();
     setActiveNotes((prev) => new Set(prev).add(note));
     NativeBridge.noteOn(note, 0.85);
   };
 
   const handleNoteOff = (note: number) => {
-    setActiveNotes((prev) => {
-      const next = new Set(prev);
-      next.delete(note);
-      return next;
-    });
-    NativeBridge.noteOff(note);
+    const noteStart = noteOnTimes.current[note] || 0;
+    const elapsed = Date.now() - noteStart;
+    const minAuditionMs = 120; // 120ms minimum gate for single mouse clicks
+
+    const doRelease = () => {
+      setActiveNotes((prev) => {
+        const next = new Set(prev);
+        next.delete(note);
+        return next;
+      });
+      NativeBridge.noteOff(note);
+      delete noteOffTimeouts.current[note];
+    };
+
+    if (elapsed < minAuditionMs) {
+      noteOffTimeouts.current[note] = setTimeout(doRelease, minAuditionMs - elapsed);
+    } else {
+      doRelease();
+    }
   };
 
   // Render 2 octaves (24 semitones, 14 white keys)
