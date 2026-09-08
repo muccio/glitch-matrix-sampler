@@ -552,6 +552,201 @@ int main()
         std::cout << "  -> PASSED." << std::endl;
     }
 
+    // TEST 10: Dynamic Note Assignment Filtering & Graph Rebuilding
+    {
+        std::cout << "[TEST 10] Testing Dynamic Note Assignment Filtering & rebuildGraph()..." << std::endl;
+        VoiceManager testVm;
+        testVm.prepare(sampleRate, blockSize);
+
+        auto osc = std::make_shared<OscillatorSource>(2001, "Specific Note Osc");
+        osc->setWaveform(OscWaveform::Sine);
+        osc->setAssignedNote(60); // C4
+        osc->setAttackMs(1.0f);
+        osc->setDecayMs(100.0f);
+        osc->setSustainLevel(0.8f);
+        osc->setReleaseMs(50.0f);
+        osc->setGain(1.0f);
+        testVm.addSource(osc);
+
+        auto click = std::make_shared<ClickSource>(2002, "Specific Note Click");
+        click->setClickType(ClickType::Dirac);
+        click->setPulseWidthSamples(4);
+        click->setAssignedNote(62); // D4
+        click->setAttackMs(0.01f);
+        click->setDecayMs(50.0f);
+        click->setSustainLevel(0.0f);
+        click->setReleaseMs(5.0f);
+        click->setGain(1.0f);
+        testVm.addSource(click);
+
+        // 1. Play Note 60: Osc should play, Click should NOT play
+        {
+            juce::AudioBuffer<float> buf(2, blockSize);
+            buf.clear();
+            juce::MidiBuffer midi;
+            midi.addEvent(juce::MidiMessage::noteOn(1, 60, (juce::uint8)127), 0);
+            testVm.processBlock(buf, midi);
+
+            float peak = buf.getMagnitude(0, 0, blockSize);
+            std::cout << "  -> Note 60 on (matches Osc): peak = " << peak << std::endl;
+            ASSERT_TRUE(peak > 0.1f, "Oscillator must play when note 60 is struck");
+            ASSERT_TRUE(osc->isPlaying(), "Oscillator must be active");
+            ASSERT_TRUE(!click->isPlaying(), "ClickSource must NOT be active on note 60");
+        }
+
+        testVm.panic();
+
+        // 2. Play Note 62: Click should play, Osc should NOT play
+        {
+            juce::AudioBuffer<float> buf(2, blockSize);
+            buf.clear();
+            juce::MidiBuffer midi;
+            midi.addEvent(juce::MidiMessage::noteOn(1, 62, (juce::uint8)127), 0);
+            testVm.processBlock(buf, midi);
+
+            float peak = buf.getMagnitude(0, 0, blockSize);
+            std::cout << "  -> Note 62 on (matches Click): peak = " << peak << std::endl;
+            ASSERT_TRUE(peak > 0.1f, "ClickSource must play when note 62 is struck");
+            ASSERT_TRUE(click->isPlaying(), "ClickSource must be active");
+            ASSERT_TRUE(!osc->isPlaying(), "Oscillator must NOT be active on note 62");
+        }
+
+        testVm.panic();
+
+        // 3. Play Note 67 (G4): Neither should play (magnitude == 0.0)
+        {
+            juce::AudioBuffer<float> buf(2, blockSize);
+            buf.clear();
+            juce::MidiBuffer midi;
+            midi.addEvent(juce::MidiMessage::noteOn(1, 67, (juce::uint8)127), 0);
+            testVm.processBlock(buf, midi);
+
+            float peak = buf.getMagnitude(0, 0, blockSize);
+            std::cout << "  -> Note 67 on (unassigned): peak = " << peak << std::endl;
+            ASSERT_NEAR(peak, 0.0f, 1e-6, "Unassigned note must produce zero output");
+            ASSERT_TRUE(!osc->isPlaying(), "Oscillator must NOT play on unassigned note");
+            ASSERT_TRUE(!click->isPlaying(), "ClickSource must NOT play on unassigned note");
+        }
+
+        // 4. Dynamically change Oscillator assigned note from 60 to 67 and call rebuildGraph()
+        osc->setAssignedNote(67);
+        testVm.rebuildGraph();
+
+        // 5. Play Note 60 again: Now it must NOT play!
+        {
+            juce::AudioBuffer<float> buf(2, blockSize);
+            buf.clear();
+            juce::MidiBuffer midi;
+            midi.addEvent(juce::MidiMessage::noteOn(1, 60, (juce::uint8)127), 0);
+            testVm.processBlock(buf, midi);
+
+            float peak = buf.getMagnitude(0, 0, blockSize);
+            std::cout << "  -> Note 60 after reassigning Osc to 67: peak = " << peak << std::endl;
+            ASSERT_NEAR(peak, 0.0f, 1e-6, "Oscillator must NOT play on note 60 after reassignment");
+        }
+
+        // 6. Play Note 67: Now Osc MUST play!
+        {
+            juce::AudioBuffer<float> buf(2, blockSize);
+            buf.clear();
+            juce::MidiBuffer midi;
+            midi.addEvent(juce::MidiMessage::noteOn(1, 67, (juce::uint8)127), 0);
+            testVm.processBlock(buf, midi);
+
+            float peak = buf.getMagnitude(0, 0, blockSize);
+            std::cout << "  -> Note 67 after reassigning Osc to 67: peak = " << peak << std::endl;
+            ASSERT_TRUE(peak > 0.1f, "Oscillator must play on note 67 after reassignment");
+            ASSERT_TRUE(osc->isPlaying(), "Oscillator must be active on note 67");
+        }
+
+        std::cout << "  -> PASSED." << std::endl;
+    }
+
+    // TEST 11: Single-Click Impulsive Attack Transient Energy (1-sample Dirac Needle)
+    {
+        std::cout << "[TEST 11] Testing Single-Click 1-Sample Dirac Needle Onset Energy..." << std::endl;
+        VoiceManager testVm;
+        testVm.prepare(sampleRate, blockSize);
+
+        auto click = std::make_shared<ClickSource>(3001, "Ultra Dirac Needle");
+        click->setClickType(ClickType::Dirac);
+        click->setPulseWidthSamples(1); // Exact 1-sample needle impulse!
+        click->setAttackMs(0.01f);
+        click->setDecayMs(10.0f);
+        click->setSustainLevel(0.0f);
+        click->setReleaseMs(5.0f);
+        click->setGain(1.0f);
+        click->setPan(0.0f); // Center
+        testVm.addSource(click);
+
+        juce::AudioBuffer<float> buf(2, blockSize);
+        buf.clear();
+        juce::MidiBuffer midi;
+        // Single click: noteOn and noteOff in same block
+        midi.addEvent(juce::MidiMessage::noteOn(1, 60, (juce::uint8)127), 0);
+        midi.addEvent(juce::MidiMessage::noteOff(1, 60, (juce::uint8)0), 0);
+
+        testVm.processBlock(buf, midi);
+
+        float sample0_L = std::abs(buf.getSample(0, 0));
+        float sample0_R = std::abs(buf.getSample(1, 0));
+        float peak = buf.getMagnitude(0, 0, blockSize);
+
+        std::cout << "  -> 1-sample Dirac needle sample 0 (L=" << sample0_L << ", R=" << sample0_R << "), peak=" << peak << std::endl;
+        ASSERT_TRUE(sample0_L > 0.5f, "Sample 0 must have strong impulse energy on the FIRST single click!");
+        ASSERT_TRUE(peak > 0.5f, "Peak must be strong on single click for 1-sample needle!");
+
+        std::cout << "  -> PASSED." << std::endl;
+    }
+
+    // TEST 12: Choke Group Sibling Co-existence on Concurrent MIDI Event
+    {
+        std::cout << "[TEST 12] Testing Choke Group Sibling Co-existence on Single Note-On..." << std::endl;
+        VoiceManager testVm;
+        testVm.prepare(sampleRate, blockSize);
+
+        // Two click sources sharing Choke Group 1 (both omni, as in Preset 06)
+        auto click1 = std::make_shared<ClickSource>(4001, "Click A");
+        click1->setClickType(ClickType::Dirac);
+        click1->setPulseWidthSamples(3);
+        click1->setAttackMs(0.01f);
+        click1->setDecayMs(15.0f);
+        click1->setSustainLevel(0.0f);
+        click1->setChokeGroup(1);
+        click1->setGain(1.0f);
+        testVm.addSource(click1);
+
+        auto click2 = std::make_shared<ClickSource>(4002, "Click B");
+        click2->setClickType(ClickType::Resonant);
+        click2->setClickFrequency(2000.0f);
+        click2->setClickDamping(0.8f);
+        click2->setAttackMs(0.01f);
+        click2->setDecayMs(20.0f);
+        click2->setSustainLevel(0.0f);
+        click2->setChokeGroup(1);
+        click2->setGain(1.0f);
+        testVm.addSource(click2);
+
+        juce::AudioBuffer<float> buf(2, blockSize);
+        buf.clear();
+        juce::MidiBuffer midi;
+        midi.addEvent(juce::MidiMessage::noteOn(1, 60, (juce::uint8)127), 0);
+
+        testVm.processBlock(buf, midi);
+
+        std::cout << "  -> Both Click A and Click B triggered concurrently:" << std::endl;
+        std::cout << "     Click A active: " << (click1->isPlaying() ? "YES" : "NO") << std::endl;
+        std::cout << "     Click B active: " << (click2->isPlaying() ? "YES" : "NO") << std::endl;
+
+        ASSERT_TRUE(click1->isPlaying(), "Click A must NOT be choked by Click B when triggered together on the same note!");
+        ASSERT_TRUE(click2->isPlaying(), "Click B must NOT be choked by Click A when triggered together on the same note!");
+
+        float peak = buf.getMagnitude(0, 0, blockSize);
+        ASSERT_TRUE(peak > 0.5f, "Layered click output must sound loudly on single click!");
+
+        std::cout << "  -> PASSED." << std::endl;
+    }
+
     std::cout << "=================================================" << std::endl;
     std::cout << "  ALL DSP & THREAD-SAFETY TESTS PASSED (100%)    " << std::endl;
     std::cout << "=================================================" << std::endl;

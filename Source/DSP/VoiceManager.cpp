@@ -187,6 +187,18 @@ void VoiceManager::clearAllSources()
     collectGarbage();
 }
 
+void VoiceManager::rebuildGraph()
+{
+    std::lock_guard<std::mutex> lock(messageThreadMutex);
+    auto list = getSourcesCopy();
+    auto* newG = buildGraph(list);
+    const auto* oldG = activeGraph.exchange(newG, std::memory_order_acq_rel);
+    if (oldG != nullptr)
+        retiredGraphs.push_back(oldG);
+
+    collectGarbage();
+}
+
 void VoiceManager::collectGarbage()
 {
     if (retiredGraphs.empty())
@@ -249,6 +261,25 @@ void VoiceManager::processBlock(juce::AudioBuffer<float>& buffer,
             int note = msg.getNoteNumber();
             float vel = msg.getFloatVelocity();
 
+            // Track all sources triggered by this MIDI event to avoid mutual sibling choking
+            std::array<bool, 256> isTriggeredThisNote;
+            isTriggeredThisNote.fill(false);
+
+            if (note >= 0 && note < 128)
+            {
+                for (int idx : graph->noteToIndices[note])
+                {
+                    if (idx >= 0 && idx < static_cast<int>(isTriggeredThisNote.size()))
+                        isTriggeredThisNote[idx] = true;
+                }
+            }
+
+            for (int idx : graph->omniIndices)
+            {
+                if (idx >= 0 && idx < static_cast<int>(isTriggeredThisNote.size()))
+                    isTriggeredThisNote[idx] = true;
+            }
+
             // Note-specific sources
             if (note >= 0 && note < 128)
             {
@@ -264,9 +295,10 @@ void VoiceManager::processBlock(juce::AudioBuffer<float>& buffer,
                             {
                                 for (int otherIdx : graph->chokeGroupIndices[cg])
                                 {
-                                    if (otherIdx != idx && otherIdx < static_cast<int>(graph->sources.size()))
+                                    // Do NOT choke sibling sources that are being triggered concurrently by the same MIDI event
+                                    if (otherIdx < static_cast<int>(isTriggeredThisNote.size()) && !isTriggeredThisNote[otherIdx])
                                     {
-                                        if (graph->sources[otherIdx])
+                                        if (otherIdx < static_cast<int>(graph->sources.size()) && graph->sources[otherIdx])
                                             graph->sources[otherIdx]->choke();
                                     }
                                 }
@@ -290,9 +322,10 @@ void VoiceManager::processBlock(juce::AudioBuffer<float>& buffer,
                         {
                             for (int otherIdx : graph->chokeGroupIndices[cg])
                             {
-                                if (otherIdx != idx && otherIdx < static_cast<int>(graph->sources.size()))
+                                // Do NOT choke sibling sources that are being triggered concurrently by the same MIDI event
+                                    if (otherIdx < static_cast<int>(isTriggeredThisNote.size()) && !isTriggeredThisNote[otherIdx])
                                 {
-                                    if (graph->sources[otherIdx])
+                                    if (otherIdx < static_cast<int>(graph->sources.size()) && graph->sources[otherIdx])
                                         graph->sources[otherIdx]->choke();
                                 }
                             }

@@ -51,6 +51,7 @@ public:
     std::shared_ptr<SoundSource> getSourceById(int sourceId) const;
     std::vector<std::shared_ptr<SoundSource>> getSourcesCopy() const;
     void clearAllSources();
+    void rebuildGraph();
 
     // Deferred reclamation (must be called periodically on Message Thread, e.g. 30Hz timer)
     void collectGarbage();

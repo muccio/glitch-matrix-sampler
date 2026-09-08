@@ -125,8 +125,16 @@ juce::WebBrowserComponent::Options WebBridge::setupOptions(
             if (src)
             {
                 if (paramId == "name") src->setName(val.toString().toStdString());
-                else if (paramId == "assignedNote") src->setAssignedNote(static_cast<int>(val));
-                else if (paramId == "chokeGroup") src->setChokeGroup(static_cast<int>(val));
+                else if (paramId == "assignedNote")
+                {
+                    src->setAssignedNote(static_cast<int>(val));
+                    proc.getVoiceManager().rebuildGraph();
+                }
+                else if (paramId == "chokeGroup")
+                {
+                    src->setChokeGroup(static_cast<int>(val));
+                    proc.getVoiceManager().rebuildGraph();
+                }
                 else if (paramId == "muted") src->setMuted(static_cast<bool>(val));
                 else if (paramId == "soloed") src->setSoloed(static_cast<bool>(val));
                 else if (paramId == "gain") src->setGain(static_cast<float>(val));
