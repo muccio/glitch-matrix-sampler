@@ -1,0 +1,15 @@
+# Build directories
+build/
+cmake-build-*/
+.cache/
+
+# Node / Frontend
+Frontend/node_modules/
+Frontend/dist/
+
+# macOS
+.DS_Store
+
+# IDEs
+.vscode/
+.idea/

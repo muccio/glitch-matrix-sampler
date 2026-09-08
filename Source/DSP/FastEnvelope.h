@@ -1,0 +1,286 @@
+#pragma once
+
+#include <cmath>
+#include <algorithm>
+
+namespace GlitchDSP
+{
+
+class FastEnvelope
+{
+public:
+    enum class Stage
+    {
+        Idle,
+        Attack,
+        Hold,
+        Decay,
+        Sustain,
+        Release,
+        ChokeRelease
+    };
+
+    FastEnvelope() = default;
+
+    void prepare(double sampleRate) noexcept
+    {
+        currentSampleRate = sampleRate > 0.0 ? sampleRate : 44100.0;
+        reset();
+    }
+
+    void reset() noexcept
+    {
+        stage = Stage::Idle;
+        currentLevel = 0.0f;
+        stageSampleCounter = 0;
+        stageTotalSamples = 0;
+        startLevel = 0.0f;
+    }
+
+    void noteOn(float velocity = 1.0f) noexcept
+    {
+        vel = std::clamp(velocity, 0.0f, 1.0f);
+        startLevel = currentLevel;
+        stageSampleCounter = 0;
+
+        // Sub-millisecond click capability (attack time can be as low as 0.05ms)
+        stageTotalSamples = msToSamples(attackMs);
+        if (stageTotalSamples <= 1)
+        {
+            currentLevel = 1.0f;
+            enterHold();
+        }
+        else
+        {
+            stage = Stage::Attack;
+        }
+    }
+
+    void noteOff() noexcept
+    {
+        if (stage == Stage::Idle)
+            return;
+
+        startLevel = currentLevel;
+        stageSampleCounter = 0;
+        stageTotalSamples = msToSamples(releaseMs);
+        if (stageTotalSamples <= 1)
+        {
+            currentLevel = 0.0f;
+            stage = Stage::Idle;
+        }
+        else
+        {
+            stage = Stage::Release;
+        }
+    }
+
+    void choke() noexcept
+    {
+        if (stage == Stage::Idle)
+            return;
+
+        // Ultra-fast 0.5ms click-free release when choked
+        startLevel = currentLevel;
+        stageSampleCounter = 0;
+        stageTotalSamples = msToSamples(0.5f);
+        if (stageTotalSamples <= 1)
+        {
+            currentLevel = 0.0f;
+            stage = Stage::Idle;
+        }
+        else
+        {
+            stage = Stage::ChokeRelease;
+        }
+    }
+
+    inline float getNextSample() noexcept
+    {
+        if (stage == Stage::Idle)
+            return 0.0f;
+
+        switch (stage)
+        {
+            case Stage::Attack:
+            {
+                if (++stageSampleCounter >= stageTotalSamples)
+                {
+                    currentLevel = 1.0f;
+                    enterHold();
+                }
+                else
+                {
+                    float t = static_cast<float>(stageSampleCounter) / static_cast<float>(stageTotalSamples);
+                    currentLevel = startLevel + (1.0f - startLevel) * applyCurve(t, attackCurve);
+                }
+                break;
+            }
+
+            case Stage::Hold:
+            {
+                if (++stageSampleCounter >= stageTotalSamples)
+                {
+                    enterDecay();
+                }
+                else
+                {
+                    currentLevel = 1.0f;
+                }
+                break;
+            }
+
+            case Stage::Decay:
+            {
+                if (++stageSampleCounter >= stageTotalSamples)
+                {
+                    currentLevel = sustainLevel;
+                    stage = Stage::Sustain;
+                }
+                else
+                {
+                    float t = static_cast<float>(stageSampleCounter) / static_cast<float>(stageTotalSamples);
+                    currentLevel = 1.0f - (1.0f - sustainLevel) * applyCurve(t, decayCurve);
+                }
+                break;
+            }
+
+            case Stage::Sustain:
+            {
+                currentLevel = sustainLevel;
+                break;
+            }
+
+            case Stage::Release:
+            {
+                if (++stageSampleCounter >= stageTotalSamples)
+                {
+                    currentLevel = 0.0f;
+                    stage = Stage::Idle;
+                }
+                else
+                {
+                    float t = static_cast<float>(stageSampleCounter) / static_cast<float>(stageTotalSamples);
+                    currentLevel = startLevel * (1.0f - applyCurve(t, releaseCurve));
+                }
+                break;
+            }
+
+            case Stage::ChokeRelease:
+            {
+                if (++stageSampleCounter >= stageTotalSamples)
+                {
+                    currentLevel = 0.0f;
+                    stage = Stage::Idle;
+                }
+                else
+                {
+                    float t = static_cast<float>(stageSampleCounter) / static_cast<float>(stageTotalSamples);
+                    currentLevel = startLevel * (1.0f - t);
+                }
+                break;
+            }
+
+            case Stage::Idle:
+            default:
+                return 0.0f;
+        }
+
+        return currentLevel * vel;
+    }
+
+    bool isActive() const noexcept { return stage != Stage::Idle; }
+    Stage getStage() const noexcept { return stage; }
+    float getCurrentLevel() const noexcept { return currentLevel; }
+
+    void setAttackMs(float ms) noexcept { attackMs = std::max(0.05f, ms); }
+    void setHoldMs(float ms) noexcept { holdMs = std::max(0.0f, ms); }
+    void setDecayMs(float ms) noexcept { decayMs = std::max(0.1f, ms); }
+    void setSustainLevel(float lvl) noexcept { sustainLevel = std::clamp(lvl, 0.0f, 1.0f); }
+    void setReleaseMs(float ms) noexcept { releaseMs = std::max(0.1f, ms); }
+
+    void setAttackCurve(float curve) noexcept { attackCurve = std::clamp(curve, -1.0f, 1.0f); }
+    void setDecayCurve(float curve) noexcept { decayCurve = std::clamp(curve, -1.0f, 1.0f); }
+    void setReleaseCurve(float curve) noexcept { releaseCurve = std::clamp(curve, -1.0f, 1.0f); }
+
+    float getAttackMs() const noexcept { return attackMs; }
+    float getHoldMs() const noexcept { return holdMs; }
+    float getDecayMs() const noexcept { return decayMs; }
+    float getSustainLevel() const noexcept { return sustainLevel; }
+    float getReleaseMs() const noexcept { return releaseMs; }
+    float getAttackCurve() const noexcept { return attackCurve; }
+    float getDecayCurve() const noexcept { return decayCurve; }
+    float getReleaseCurve() const noexcept { return releaseCurve; }
+
+private:
+    inline int msToSamples(float ms) const noexcept
+    {
+        return std::max(1, static_cast<int>(std::round(ms * 0.001 * currentSampleRate)));
+    }
+
+    void enterHold() noexcept
+    {
+        stageSampleCounter = 0;
+        stageTotalSamples = msToSamples(holdMs);
+        if (stageTotalSamples <= 1)
+            enterDecay();
+        else
+            stage = Stage::Hold;
+    }
+
+    void enterDecay() noexcept
+    {
+        stageSampleCounter = 0;
+        stageTotalSamples = msToSamples(decayMs);
+        if (stageTotalSamples <= 1)
+        {
+            currentLevel = sustainLevel;
+            stage = Stage::Sustain;
+        }
+        else
+        {
+            stage = Stage::Decay;
+        }
+    }
+
+    // Morphable curve: -1.0 (exponential) -> 0.0 (linear) -> +1.0 (logarithmic)
+    static inline float applyCurve(float t, float curve) noexcept
+    {
+        t = std::clamp(t, 0.0f, 1.0f);
+        if (std::abs(curve) < 0.01f)
+            return t;
+
+        if (curve > 0.0f)
+        {
+            // Logarithmic / fast rise
+            float p = 1.0f + curve * 4.0f; // 1.0 to 5.0
+            return 1.0f - std::pow(1.0f - t, p);
+        }
+        else
+        {
+            // Exponential / slow rise
+            float p = 1.0f + (-curve) * 4.0f; // 1.0 to 5.0
+            return std::pow(t, p);
+        }
+    }
+
+    double currentSampleRate = 44100.0;
+    Stage stage = Stage::Idle;
+    float currentLevel = 0.0f;
+    float startLevel = 0.0f;
+    float vel = 1.0f;
+    int stageSampleCounter = 0;
+    int stageTotalSamples = 0;
+
+    float attackMs = 2.0f;     // Default snappy 2ms
+    float holdMs = 0.0f;
+    float decayMs = 120.0f;
+    float sustainLevel = 0.5f;
+    float releaseMs = 80.0f;
+
+    float attackCurve = -0.5f;  // Snappy exponential attack
+    float decayCurve = -0.5f;   // Exponential decay
+    float releaseCurve = -0.5f; // Exponential release
+};
+
+} // namespace GlitchDSP
