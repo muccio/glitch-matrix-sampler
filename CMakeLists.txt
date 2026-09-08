@@ -33,6 +33,7 @@ set(DSP_SOURCES
     Source/DSP/OscillatorSource.cpp
     Source/DSP/NoiseSource.cpp
     Source/DSP/SampleSource.cpp
+    Source/DSP/ClickSource.cpp
     Source/DSP/VoiceManager.cpp
 )
 

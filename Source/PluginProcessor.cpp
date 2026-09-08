@@ -41,7 +41,7 @@ double GlitchMatrixSamplerAudioProcessor::getTailLengthSeconds() const
 
 int GlitchMatrixSamplerAudioProcessor::getNumPrograms()
 {
-    return 5;
+    return GlitchDSP::StateSerializer::getFactoryPresets().size();
 }
 
 int GlitchMatrixSamplerAudioProcessor::getCurrentProgram()

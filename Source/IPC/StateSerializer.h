@@ -7,6 +7,7 @@
 #include "../DSP/OscillatorSource.h"
 #include "../DSP/NoiseSource.h"
 #include "../DSP/SampleSource.h"
+#include "../DSP/ClickSource.h"
 
 namespace GlitchDSP
 {

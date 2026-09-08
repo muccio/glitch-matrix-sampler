@@ -15,7 +15,8 @@ enum class SourceType
 {
     Oscillator = 0,
     Noise = 1,
-    Sample = 2
+    Sample = 2,
+    Click = 3
 };
 
 class SoundSource

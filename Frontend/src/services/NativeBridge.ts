@@ -260,6 +260,21 @@ class NativeBridgeService {
             loopStart: 0.0,
             loopLengthMs: 20,
             crossfadeMs: 2.0
+          } : {}),
+          ...(type === 'Click' ? {
+            name: `Click ${newId}`,
+            attackMs: 0.05,
+            holdMs: 0.0,
+            decayMs: 25.0,
+            sustain: 0.0,
+            releaseMs: 10.0,
+            curve: -0.7,
+            clickType: 0,
+            clickWidthSamples: 4,
+            clickFrequency: 1200,
+            clickDamping: 0.65,
+            clickPitchTrack: false,
+            clickPolarity: 0
           } : {})
         };
         this.mockState.sources.push(newSource);

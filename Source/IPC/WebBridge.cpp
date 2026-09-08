@@ -68,6 +68,8 @@ juce::WebBrowserComponent::Options WebBridge::setupOptions(
             newSrc = std::make_shared<NoiseSource>(newId, "Noise " + std::to_string(newId));
         else if (type == "Sample")
             newSrc = std::make_shared<SampleSource>(newId, "Sample " + std::to_string(newId));
+        else if (type == "Click")
+            newSrc = std::make_shared<ClickSource>(newId, "Click " + std::to_string(newId));
 
         if (newSrc)
         {
@@ -136,90 +138,105 @@ juce::WebBrowserComponent::Options WebBridge::setupOptions(
                     if (auto* osc = dynamic_cast<OscillatorSource*>(src.get())) osc->setAttackMs(static_cast<float>(val));
                     else if (auto* ns = dynamic_cast<NoiseSource*>(src.get())) ns->setAttackMs(static_cast<float>(val));
                     else if (auto* sm = dynamic_cast<SampleSource*>(src.get())) sm->setAttackMs(static_cast<float>(val));
+                    else if (auto* cs = dynamic_cast<ClickSource*>(src.get())) cs->setAttackMs(static_cast<float>(val));
                 }
                 else if (paramId == "holdMs")
                 {
                     if (auto* osc = dynamic_cast<OscillatorSource*>(src.get())) osc->setHoldMs(static_cast<float>(val));
                     else if (auto* ns = dynamic_cast<NoiseSource*>(src.get())) ns->setHoldMs(static_cast<float>(val));
                     else if (auto* sm = dynamic_cast<SampleSource*>(src.get())) sm->setHoldMs(static_cast<float>(val));
+                    else if (auto* cs = dynamic_cast<ClickSource*>(src.get())) cs->setHoldMs(static_cast<float>(val));
                 }
                 else if (paramId == "decayMs")
                 {
                     if (auto* osc = dynamic_cast<OscillatorSource*>(src.get())) osc->setDecayMs(static_cast<float>(val));
                     else if (auto* ns = dynamic_cast<NoiseSource*>(src.get())) ns->setDecayMs(static_cast<float>(val));
                     else if (auto* sm = dynamic_cast<SampleSource*>(src.get())) sm->setDecayMs(static_cast<float>(val));
+                    else if (auto* cs = dynamic_cast<ClickSource*>(src.get())) cs->setDecayMs(static_cast<float>(val));
                 }
                 else if (paramId == "sustain")
                 {
                     if (auto* osc = dynamic_cast<OscillatorSource*>(src.get())) osc->setSustainLevel(static_cast<float>(val));
                     else if (auto* ns = dynamic_cast<NoiseSource*>(src.get())) ns->setSustainLevel(static_cast<float>(val));
                     else if (auto* sm = dynamic_cast<SampleSource*>(src.get())) sm->setSustainLevel(static_cast<float>(val));
+                    else if (auto* cs = dynamic_cast<ClickSource*>(src.get())) cs->setSustainLevel(static_cast<float>(val));
                 }
                 else if (paramId == "releaseMs")
                 {
                     if (auto* osc = dynamic_cast<OscillatorSource*>(src.get())) osc->setReleaseMs(static_cast<float>(val));
                     else if (auto* ns = dynamic_cast<NoiseSource*>(src.get())) ns->setReleaseMs(static_cast<float>(val));
                     else if (auto* sm = dynamic_cast<SampleSource*>(src.get())) sm->setReleaseMs(static_cast<float>(val));
+                    else if (auto* cs = dynamic_cast<ClickSource*>(src.get())) cs->setReleaseMs(static_cast<float>(val));
                 }
                 else if (paramId == "curve")
                 {
                     if (auto* osc = dynamic_cast<OscillatorSource*>(src.get())) osc->setCurveShape(static_cast<float>(val));
                     else if (auto* ns = dynamic_cast<NoiseSource*>(src.get())) ns->setCurveShape(static_cast<float>(val));
                     else if (auto* sm = dynamic_cast<SampleSource*>(src.get())) sm->setCurveShape(static_cast<float>(val));
+                    else if (auto* cs = dynamic_cast<ClickSource*>(src.get())) cs->setCurveShape(static_cast<float>(val));
                 }
                 else if (paramId == "bitDepth")
                 {
                     if (auto* osc = dynamic_cast<OscillatorSource*>(src.get())) osc->getGlitchFX().setBitDepth(static_cast<float>(val));
                     else if (auto* ns = dynamic_cast<NoiseSource*>(src.get())) ns->getGlitchFX().setBitDepth(static_cast<float>(val));
                     else if (auto* sm = dynamic_cast<SampleSource*>(src.get())) sm->getGlitchFX().setBitDepth(static_cast<float>(val));
+                    else if (auto* cs = dynamic_cast<ClickSource*>(src.get())) cs->getGlitchFX().setBitDepth(static_cast<float>(val));
                 }
                 else if (paramId == "bitcrushMix")
                 {
                     if (auto* osc = dynamic_cast<OscillatorSource*>(src.get())) osc->getGlitchFX().setBitcrushMix(static_cast<float>(val));
                     else if (auto* ns = dynamic_cast<NoiseSource*>(src.get())) ns->getGlitchFX().setBitcrushMix(static_cast<float>(val));
                     else if (auto* sm = dynamic_cast<SampleSource*>(src.get())) sm->getGlitchFX().setBitcrushMix(static_cast<float>(val));
+                    else if (auto* cs = dynamic_cast<ClickSource*>(src.get())) cs->getGlitchFX().setBitcrushMix(static_cast<float>(val));
                 }
                 else if (paramId == "downsampleHz")
                 {
                     if (auto* osc = dynamic_cast<OscillatorSource*>(src.get())) osc->getGlitchFX().setDownsampleHz(static_cast<float>(val));
                     else if (auto* ns = dynamic_cast<NoiseSource*>(src.get())) ns->getGlitchFX().setDownsampleHz(static_cast<float>(val));
                     else if (auto* sm = dynamic_cast<SampleSource*>(src.get())) sm->getGlitchFX().setDownsampleHz(static_cast<float>(val));
+                    else if (auto* cs = dynamic_cast<ClickSource*>(src.get())) cs->getGlitchFX().setDownsampleHz(static_cast<float>(val));
                 }
                 else if (paramId == "downsampleMix")
                 {
                     if (auto* osc = dynamic_cast<OscillatorSource*>(src.get())) osc->getGlitchFX().setDownsampleMix(static_cast<float>(val));
                     else if (auto* ns = dynamic_cast<NoiseSource*>(src.get())) ns->getGlitchFX().setDownsampleMix(static_cast<float>(val));
                     else if (auto* sm = dynamic_cast<SampleSource*>(src.get())) sm->getGlitchFX().setDownsampleMix(static_cast<float>(val));
+                    else if (auto* cs = dynamic_cast<ClickSource*>(src.get())) cs->getGlitchFX().setDownsampleMix(static_cast<float>(val));
                 }
                 else if (paramId == "stutterHz")
                 {
                     if (auto* osc = dynamic_cast<OscillatorSource*>(src.get())) osc->getGlitchFX().setStutterHz(static_cast<float>(val));
                     else if (auto* ns = dynamic_cast<NoiseSource*>(src.get())) ns->getGlitchFX().setStutterHz(static_cast<float>(val));
                     else if (auto* sm = dynamic_cast<SampleSource*>(src.get())) sm->getGlitchFX().setStutterHz(static_cast<float>(val));
+                    else if (auto* cs = dynamic_cast<ClickSource*>(src.get())) cs->getGlitchFX().setStutterHz(static_cast<float>(val));
                 }
                 else if (paramId == "stutterDuty")
                 {
                     if (auto* osc = dynamic_cast<OscillatorSource*>(src.get())) osc->getGlitchFX().setStutterDuty(static_cast<float>(val));
                     else if (auto* ns = dynamic_cast<NoiseSource*>(src.get())) ns->getGlitchFX().setStutterDuty(static_cast<float>(val));
                     else if (auto* sm = dynamic_cast<SampleSource*>(src.get())) sm->getGlitchFX().setStutterDuty(static_cast<float>(val));
+                    else if (auto* cs = dynamic_cast<ClickSource*>(src.get())) cs->getGlitchFX().setStutterDuty(static_cast<float>(val));
                 }
                 else if (paramId == "stutterMix")
                 {
                     if (auto* osc = dynamic_cast<OscillatorSource*>(src.get())) osc->getGlitchFX().setStutterMix(static_cast<float>(val));
                     else if (auto* ns = dynamic_cast<NoiseSource*>(src.get())) ns->getGlitchFX().setStutterMix(static_cast<float>(val));
                     else if (auto* sm = dynamic_cast<SampleSource*>(src.get())) sm->getGlitchFX().setStutterMix(static_cast<float>(val));
+                    else if (auto* cs = dynamic_cast<ClickSource*>(src.get())) cs->getGlitchFX().setStutterMix(static_cast<float>(val));
                 }
                 else if (paramId == "stutterSync")
                 {
                     if (auto* osc = dynamic_cast<OscillatorSource*>(src.get())) osc->getGlitchFX().setStutterSync(static_cast<bool>(val));
                     else if (auto* ns = dynamic_cast<NoiseSource*>(src.get())) ns->getGlitchFX().setStutterSync(static_cast<bool>(val));
                     else if (auto* sm = dynamic_cast<SampleSource*>(src.get())) sm->getGlitchFX().setStutterSync(static_cast<bool>(val));
+                    else if (auto* cs = dynamic_cast<ClickSource*>(src.get())) cs->getGlitchFX().setStutterSync(static_cast<bool>(val));
                 }
                 else if (paramId == "stutterDivision")
                 {
                     if (auto* osc = dynamic_cast<OscillatorSource*>(src.get())) osc->getGlitchFX().setStutterDivision(static_cast<int>(val));
                     else if (auto* ns = dynamic_cast<NoiseSource*>(src.get())) ns->getGlitchFX().setStutterDivision(static_cast<int>(val));
                     else if (auto* sm = dynamic_cast<SampleSource*>(src.get())) sm->getGlitchFX().setStutterDivision(static_cast<int>(val));
+                    else if (auto* cs = dynamic_cast<ClickSource*>(src.get())) cs->getGlitchFX().setStutterDivision(static_cast<int>(val));
                 }
                 // Osc specific
                 else if (paramId == "waveform")
@@ -293,6 +310,37 @@ juce::WebBrowserComponent::Options WebBridge::setupOptions(
                 {
                     if (auto* sm = dynamic_cast<SampleSource*>(src.get()))
                         sm->setCrossfadeMs(static_cast<float>(val));
+                }
+                // Click specific
+                else if (paramId == "clickType")
+                {
+                    if (auto* cs = dynamic_cast<ClickSource*>(src.get()))
+                        cs->setClickType(static_cast<ClickType>(static_cast<int>(val)));
+                }
+                else if (paramId == "clickWidthSamples")
+                {
+                    if (auto* cs = dynamic_cast<ClickSource*>(src.get()))
+                        cs->setPulseWidthSamples(static_cast<int>(val));
+                }
+                else if (paramId == "clickFrequency")
+                {
+                    if (auto* cs = dynamic_cast<ClickSource*>(src.get()))
+                        cs->setClickFrequency(static_cast<float>(val));
+                }
+                else if (paramId == "clickDamping")
+                {
+                    if (auto* cs = dynamic_cast<ClickSource*>(src.get()))
+                        cs->setClickDamping(static_cast<float>(val));
+                }
+                else if (paramId == "clickPitchTrack")
+                {
+                    if (auto* cs = dynamic_cast<ClickSource*>(src.get()))
+                        cs->setPitchTrack(static_cast<bool>(val));
+                }
+                else if (paramId == "clickPolarity")
+                {
+                    if (auto* cs = dynamic_cast<ClickSource*>(src.get()))
+                        cs->setPolarity(static_cast<int>(val));
                 }
             }
         }

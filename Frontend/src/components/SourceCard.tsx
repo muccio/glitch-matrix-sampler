@@ -1,6 +1,6 @@
 import React from 'react';
 import { SoundSourceData } from '../types/matrix';
-import { VolumeX, Headphones, Copy, Trash2, Music, Cpu, Radio, Disc } from 'lucide-react';
+import { VolumeX, Headphones, Copy, Trash2, Music, Cpu, Radio, Disc, Zap } from 'lucide-react';
 
 interface SourceCardProps {
   source: SoundSourceData;
@@ -36,6 +36,8 @@ export const SourceCard: React.FC<SourceCardProps> = ({
         return <Radio className="w-3.5 h-3.5 text-glitch-amber" />;
       case 'Sample':
         return <Disc className="w-3.5 h-3.5 text-glitch-pink" />;
+      case 'Click':
+        return <Zap className="w-3.5 h-3.5 text-emerald-400" />;
     }
   };
 
@@ -47,6 +49,8 @@ export const SourceCard: React.FC<SourceCardProps> = ({
         return 'text-glitch-amber border-glitch-amber/30 bg-glitch-amber/10';
       case 'Sample':
         return 'text-glitch-pink border-glitch-pink/30 bg-glitch-pink/10';
+      case 'Click':
+        return 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10';
     }
   };
 

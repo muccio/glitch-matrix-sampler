@@ -85,6 +85,10 @@ bool StateSerializer::deserializeStateFromVar(const juce::var& stateVar, VoiceMa
                 }
                 newSource = sampleSrc;
             }
+            else if (typeStr == "Click")
+            {
+                newSource = std::make_shared<ClickSource>(id, nameStr.toStdString());
+            }
 
             if (newSource)
             {
@@ -306,6 +310,59 @@ juce::Array<juce::var> StateSerializer::getFactoryPresets()
             noise2->getGlitchFX().setBitcrushMix(0.8f);
             noise2->setChokeGroup(2);
             sources.add(noise2->toVar());
+        }
+        root->setProperty("sources", juce::var(sources));
+        p->setProperty("state", juce::var(root));
+        presets.add(juce::var(p));
+    }
+
+    // Preset 5: Micro-Click Array
+    {
+        auto* p = new juce::DynamicObject();
+        p->setProperty("name", "06. Micro-Click Array");
+        p->setProperty("description", "Dirac needle impulse, resonant wood pop, and laser chirp clicks");
+
+        auto* root = new juce::DynamicObject();
+        root->setProperty("masterVolume", 0.95f);
+
+        juce::Array<juce::var> sources;
+        {
+            auto click1 = std::make_shared<ClickSource>(1, "Dirac Needle");
+            click1->setClickType(ClickType::Dirac);
+            click1->setPulseWidthSamples(3);
+            click1->setAttackMs(0.01f);
+            click1->setDecayMs(10.0f);
+            click1->setSustainLevel(0.0f);
+            click1->setReleaseMs(5.0f);
+            click1->setPan(-0.4f);
+            click1->setChokeGroup(1);
+            sources.add(click1->toVar());
+        }
+        {
+            auto click2 = std::make_shared<ClickSource>(2, "Resonant Pop");
+            click2->setClickType(ClickType::Resonant);
+            click2->setClickFrequency(1800.0f);
+            click2->setClickDamping(0.75f);
+            click2->setAttackMs(0.02f);
+            click2->setDecayMs(25.0f);
+            click2->setSustainLevel(0.0f);
+            click2->setReleaseMs(10.0f);
+            click2->setPan(0.4f);
+            click2->setChokeGroup(1);
+            sources.add(click2->toVar());
+        }
+        {
+            auto click3 = std::make_shared<ClickSource>(3, "Laser Chirp");
+            click3->setClickType(ClickType::Chirp);
+            click3->setClickFrequency(800.0f);
+            click3->setClickDamping(0.5f);
+            click3->setAttackMs(0.01f);
+            click3->setDecayMs(40.0f);
+            click3->setSustainLevel(0.0f);
+            click3->setReleaseMs(15.0f);
+            click3->getGlitchFX().setBitDepth(5.0f);
+            click3->getGlitchFX().setBitcrushMix(0.6f);
+            sources.add(click3->toVar());
         }
         root->setProperty("sources", juce::var(sources));
         p->setProperty("state", juce::var(root));

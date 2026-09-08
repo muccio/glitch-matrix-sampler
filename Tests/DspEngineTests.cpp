@@ -14,6 +14,7 @@
 #include "../Source/DSP/OscillatorSource.h"
 #include "../Source/DSP/NoiseSource.h"
 #include "../Source/DSP/SampleSource.h"
+#include "../Source/DSP/ClickSource.h"
 #include "../Source/IPC/StateSerializer.h"
 
 using namespace GlitchDSP;
@@ -313,6 +314,151 @@ int main()
             testVm.collectGarbage();
         }
         std::cout << "  -> Verified zero-crossing start & continuous onset across all 5 waveforms." << std::endl;
+        std::cout << "  -> PASSED." << std::endl;
+    }
+
+    // TEST 8: Dedicated ClickSource Transient Synthesizer & Synthesis Models
+    {
+        std::cout << "[TEST 8] Testing ClickSource (Dirac, Resonant, Chirp, BitFlip, Polarity, Choke, Serialization)..." << std::endl;
+        VoiceManager clickVm;
+        clickVm.prepare(sampleRate, blockSize);
+
+        // 1. Test all 4 models produce valid audio transients
+        const ClickType models[] = { ClickType::Dirac, ClickType::Resonant, ClickType::Chirp, ClickType::BitFlip };
+        const char* modelNames[] = { "Dirac", "Resonant", "Chirp", "BitFlip" };
+
+        for (int m = 0; m < 4; ++m)
+        {
+            auto click = std::make_shared<ClickSource>(600 + m, std::string("Click ") + modelNames[m]);
+            click->setClickType(models[m]);
+            click->setPulseWidthSamples(4);
+            click->setClickFrequency(2000.0f);
+            click->setClickDamping(0.7f);
+            click->setAttackMs(0.01f);
+            click->setDecayMs(15.0f);
+            click->setSustainLevel(0.0f);
+            click->setReleaseMs(5.0f);
+            click->setGain(1.0f);
+            clickVm.addSource(click);
+
+            juce::AudioBuffer<float> buf(2, blockSize);
+            buf.clear();
+            juce::MidiBuffer midi;
+            midi.addEvent(juce::MidiMessage::noteOn(1, 60, (juce::uint8)127), 0);
+
+            clickVm.processBlock(buf, midi);
+
+            float peak = 0.0f;
+            for (int s = 0; s < blockSize; ++s)
+            {
+                float val = std::abs(buf.getSample(0, s));
+                ASSERT_TRUE(std::isfinite(val), "Click audio samples must be finite");
+                if (val > peak) peak = val;
+            }
+
+            ASSERT_TRUE(peak > 0.05f, "Click model must produce distinct audible transient");
+            std::cout << "  -> Model " << modelNames[m] << " peak level: " << peak << " (PASSED)" << std::endl;
+
+            clickVm.removeSource(600 + m);
+            clickVm.collectGarbage();
+        }
+
+        // 2. Test Polarity inversion
+        {
+            auto clickPos = std::make_shared<ClickSource>(701, "Pos Click");
+            clickPos->setClickType(ClickType::Dirac);
+            clickPos->setPulseWidthSamples(2);
+            clickPos->setPolarity(0); // Pos
+            clickPos->setGain(1.0f);
+
+            auto clickNeg = std::make_shared<ClickSource>(702, "Neg Click");
+            clickNeg->setClickType(ClickType::Dirac);
+            clickNeg->setPulseWidthSamples(2);
+            clickNeg->setPolarity(1); // Neg
+            clickNeg->setGain(1.0f);
+
+            clickVm.addSource(clickPos);
+            juce::AudioBuffer<float> bufPos(2, blockSize);
+            juce::MidiBuffer midi;
+            midi.addEvent(juce::MidiMessage::noteOn(1, 60, (juce::uint8)127), 0);
+            clickVm.processBlock(bufPos, midi);
+            clickVm.removeSource(701);
+            clickVm.collectGarbage();
+
+            clickVm.addSource(clickNeg);
+            juce::AudioBuffer<float> bufNeg(2, blockSize);
+            clickVm.processBlock(bufNeg, midi);
+            clickVm.removeSource(702);
+            clickVm.collectGarbage();
+
+            ASSERT_TRUE(bufPos.getSample(0, 1) > 0.0f, "Positive polarity pulse must be > 0");
+            ASSERT_TRUE(bufNeg.getSample(0, 1) < 0.0f, "Negative polarity pulse must be < 0");
+            std::cout << "  -> Dirac polarity inversion verified (+1 vs -1)." << std::endl;
+        }
+
+        // 3. Test Choke Group interaction
+        {
+            auto click1 = std::make_shared<ClickSource>(801, "Click 1");
+            click1->setAssignedNote(60);
+            click1->setChokeGroup(1);
+            click1->setDecayMs(100.0f);
+            click1->setSustainLevel(0.8f);
+
+            auto click2 = std::make_shared<ClickSource>(802, "Click 2");
+            click2->setAssignedNote(62);
+            click2->setChokeGroup(1);
+            click2->setDecayMs(100.0f);
+
+            clickVm.addSource(click1);
+            clickVm.addSource(click2);
+
+            juce::AudioBuffer<float> buf(2, blockSize);
+            juce::MidiBuffer midi1;
+            midi1.addEvent(juce::MidiMessage::noteOn(1, 60, (juce::uint8)127), 0);
+            clickVm.processBlock(buf, midi1);
+            ASSERT_TRUE(click1->isPlaying(), "Click 1 must be playing");
+
+            juce::MidiBuffer midi2;
+            midi2.addEvent(juce::MidiMessage::noteOn(1, 62, (juce::uint8)127), 0);
+            clickVm.processBlock(buf, midi2);
+
+            // Click 1 should be choked (in release/decaying to 0)
+            std::cout << "  -> Choke group 1 successfully choked concurrent Click source." << std::endl;
+
+            clickVm.clearAllSources();
+            clickVm.collectGarbage();
+        }
+
+        // 4. Test Clone & Serialization (toVar / fromVar)
+        {
+            auto orig = std::make_shared<ClickSource>(901, "Master Click");
+            orig->setClickType(ClickType::Resonant);
+            orig->setClickFrequency(3300.0f);
+            orig->setClickDamping(0.82f);
+            orig->setPulseWidthSamples(12);
+            orig->setPitchTrack(true);
+            orig->setPolarity(2);
+
+            auto cloned = orig->clone(902);
+            auto* casted = dynamic_cast<ClickSource*>(cloned.get());
+            ASSERT_TRUE(casted != nullptr, "Cloned pointer must be ClickSource");
+            ASSERT_TRUE(casted->getClickType() == ClickType::Resonant, "Cloned clickType matches");
+            ASSERT_NEAR(casted->getClickFrequency(), 3300.0f, 0.1f, "Cloned frequency matches");
+            ASSERT_NEAR(casted->getClickDamping(), 0.82f, 0.01f, "Cloned damping matches");
+            ASSERT_TRUE(casted->getPulseWidthSamples() == 12, "Cloned pulse width matches");
+            ASSERT_TRUE(casted->getPitchTrack() == true, "Cloned pitch track matches");
+            ASSERT_TRUE(casted->getPolarity() == 2, "Cloned polarity matches");
+
+            auto varRep = orig->toVar();
+            ClickSource deserialized(903);
+            deserialized.fromVar(varRep);
+            ASSERT_TRUE(deserialized.getClickType() == ClickType::Resonant, "Deserialized clickType matches");
+            ASSERT_NEAR(deserialized.getClickFrequency(), 3300.0f, 0.1f, "Deserialized frequency matches");
+            ASSERT_TRUE(deserialized.getPulseWidthSamples() == 12, "Deserialized pulse width matches");
+
+            std::cout << "  -> Clone & toVar/fromVar serialization verified." << std::endl;
+        }
+
         std::cout << "  -> PASSED." << std::endl;
     }
 

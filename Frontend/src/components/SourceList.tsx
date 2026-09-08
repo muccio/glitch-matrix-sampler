@@ -1,7 +1,7 @@
 import React from 'react';
 import { SoundSourceData, SourceType } from '../types/matrix';
 import { SourceCard } from './SourceCard';
-import { Plus, Cpu, Radio, Disc } from 'lucide-react';
+import { Plus, Cpu, Radio, Disc, Zap } from 'lucide-react';
 import { NativeBridge } from '../services/NativeBridge';
 
 interface SourceListProps {
@@ -33,33 +33,46 @@ export const SourceList: React.FC<SourceListProps> = ({
           <span className="text-[10px] text-glitch-dim">UNLIMITED DYNAMIC</span>
         </div>
 
-        {/* 3 Quick Add Buttons */}
-        <div className="grid grid-cols-3 gap-1.5">
+        {/* 4 Quick Add Buttons */}
+        <div className="grid grid-cols-4 gap-1">
           <button
             onClick={() => handleAdd('Oscillator')}
-            className="flex items-center justify-center gap-1 py-1.5 px-2 rounded bg-glitch-cyan/10 hover:bg-glitch-cyan/20 border border-glitch-cyan/40 hover:border-glitch-cyan text-glitch-cyan text-[10px] font-bold transition-all shadow-sm"
+            className="flex items-center justify-center gap-0.5 py-1.5 px-1 rounded bg-glitch-cyan/10 hover:bg-glitch-cyan/20 border border-glitch-cyan/40 hover:border-glitch-cyan text-glitch-cyan text-[10px] font-bold transition-all shadow-sm"
+            title="Add PolyBLEP / Glitch Wavetable Oscillator"
           >
-            <Plus className="w-3 h-3" />
-            <Cpu className="w-3 h-3" />
+            <Plus className="w-2.5 h-2.5" />
+            <Cpu className="w-2.5 h-2.5" />
             OSC
           </button>
 
           <button
             onClick={() => handleAdd('Noise')}
-            className="flex items-center justify-center gap-1 py-1.5 px-2 rounded bg-glitch-amber/10 hover:bg-glitch-amber/20 border border-glitch-amber/40 hover:border-glitch-amber text-glitch-amber text-[10px] font-bold transition-all shadow-sm"
+            className="flex items-center justify-center gap-0.5 py-1.5 px-1 rounded bg-glitch-amber/10 hover:bg-glitch-amber/20 border border-glitch-amber/40 hover:border-glitch-amber text-glitch-amber text-[10px] font-bold transition-all shadow-sm"
+            title="Add Noise / Poisson Crackle / Bit-Flip Hash"
           >
-            <Plus className="w-3 h-3" />
-            <Radio className="w-3 h-3" />
+            <Plus className="w-2.5 h-2.5" />
+            <Radio className="w-2.5 h-2.5" />
             NOISE
           </button>
 
           <button
             onClick={() => handleAdd('Sample')}
-            className="flex items-center justify-center gap-1 py-1.5 px-2 rounded bg-glitch-pink/10 hover:bg-glitch-pink/20 border border-glitch-pink/40 hover:border-glitch-pink text-glitch-pink text-[10px] font-bold transition-all shadow-sm"
+            className="flex items-center justify-center gap-0.5 py-1.5 px-1 rounded bg-glitch-pink/10 hover:bg-glitch-pink/20 border border-glitch-pink/40 hover:border-glitch-pink text-glitch-pink text-[10px] font-bold transition-all shadow-sm"
+            title="Add Micro-Sampler"
           >
-            <Plus className="w-3 h-3" />
-            <Disc className="w-3 h-3" />
+            <Plus className="w-2.5 h-2.5" />
+            <Disc className="w-2.5 h-2.5" />
             SMPL
+          </button>
+
+          <button
+            onClick={() => handleAdd('Click')}
+            className="flex items-center justify-center gap-0.5 py-1.5 px-1 rounded bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/40 hover:border-emerald-500 text-emerald-400 text-[10px] font-bold transition-all shadow-sm"
+            title="Add Micro-Click Impulse Generator"
+          >
+            <Plus className="w-2.5 h-2.5" />
+            <Zap className="w-2.5 h-2.5" />
+            CLICK
           </button>
         </div>
       </div>
@@ -69,7 +82,7 @@ export const SourceList: React.FC<SourceListProps> = ({
         {sources.length === 0 ? (
           <div className="h-48 border border-dashed border-glitch-border rounded flex flex-col items-center justify-center text-glitch-dim text-xs gap-2 p-4 text-center">
             <span>NO ACTIVE SOURCES</span>
-            <span className="text-[10px]">Click OSC, NOISE, or SMPL above to create your first glitch generator.</span>
+            <span className="text-[10px]">Click OSC, NOISE, SMPL, or CLICK above to create your first glitch generator.</span>
           </div>
         ) : (
           sources.map((src) => (

@@ -1,6 +1,7 @@
-export type SourceType = 'Oscillator' | 'Noise' | 'Sample';
+export type SourceType = 'Oscillator' | 'Noise' | 'Sample' | 'Click';
 export type OscWaveform = 'Sine' | 'Square' | 'Saw' | 'Triangle' | 'GlitchWavetable';
 export type NoiseType = 'White' | 'Pink' | 'Crackle' | 'BitFlipHash';
+export type ClickModel = 'Dirac' | 'Resonant' | 'Chirp' | 'BitFlip';
 
 export interface EnvelopeData {
   attackMs: number;
@@ -74,6 +75,14 @@ export interface SoundSourceData {
   loopStart?: number;
   loopLengthMs?: number;
   crossfadeMs?: number;
+
+  // Click-specific
+  clickType?: number;
+  clickWidthSamples?: number;
+  clickFrequency?: number;
+  clickDamping?: number;
+  clickPitchTrack?: boolean;
+  clickPolarity?: number;
 }
 
 export interface WaveformPeak {
