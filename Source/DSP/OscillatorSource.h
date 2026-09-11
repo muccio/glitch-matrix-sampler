@@ -18,14 +18,14 @@ enum class OscWaveform
 class OscillatorSource : public SoundSource
 {
 public:
-    static constexpr int MAX_VOICES = 8;
+    static constexpr int MAX_VOICES = 32;
 
     OscillatorSource(int id, const std::string& sourceName = "Oscillator");
     ~OscillatorSource() override = default;
 
     void prepare(double sampleRate, int maxBlockSize) override;
     void noteOn(int noteNumber, float velocity) override;
-    void noteOff(float velocity) override;
+    void noteOff(int noteNumber, float velocity) override;
     void choke() override;
     void processBlock(juce::AudioBuffer<float>& buffer, int startSample, int numSamples, double hostBpm, double hostPpq) override;
     bool isPlaying() const noexcept override;
@@ -75,12 +75,14 @@ private:
         double phase = 0.0;
         double phaseInc = 0.0;
         int noteNumber = -1;
+        uint32_t age = 0;
         bool active = false;
         FastEnvelope envelope;
     };
 
     double currentSampleRate = 44100.0;
     std::array<Voice, MAX_VOICES> voices;
+    uint32_t nextVoiceAge = 1;
     GlitchFX glitchFx;
 
     std::atomic<int> waveform { static_cast<int>(OscWaveform::Sine) };

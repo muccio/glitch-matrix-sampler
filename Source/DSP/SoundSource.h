@@ -60,10 +60,14 @@ public:
     float getPitchFine() const noexcept { return pitchFine.load(std::memory_order_relaxed); }
     void setPitchFine(float fine) noexcept { pitchFine.store(std::clamp(fine, -100.0f, 100.0f), std::memory_order_relaxed); }
 
+    int getOutputBus() const noexcept { return outputBus.load(std::memory_order_relaxed); }
+    void setOutputBus(int bus) noexcept { outputBus.store(std::clamp(bus, 0, 15), std::memory_order_relaxed); }
+
     // DSP Lifecycle
     virtual void prepare(double sampleRate, int maxBlockSize) = 0;
     virtual void noteOn(int noteNumber, float velocity) = 0;
-    virtual void noteOff(float velocity) = 0;
+    virtual void noteOff(int noteNumber, float velocity) = 0;
+    void noteOff(float velocity) { noteOff(-1, velocity); }
     virtual void choke() = 0;
     virtual void processBlock(juce::AudioBuffer<float>& buffer, int startSample, int numSamples, double hostBpm, double hostPpq) = 0;
     virtual bool isPlaying() const noexcept = 0;
@@ -81,6 +85,7 @@ protected:
     // Routing atomics
     std::atomic<int> assignedNote { -1 }; // -1 = all notes / omni
     std::atomic<int> chokeGroup { 0 };   // 0 = none, 1-8 = choke group
+    std::atomic<int> outputBus { 0 };    // 0 = Main (Out 1-2), 1 = Out 2 (3-4), ..., 15 = Out 16 (31-32)
     std::atomic<bool> isMuted { false };
     std::atomic<bool> isSoloed { false };
 

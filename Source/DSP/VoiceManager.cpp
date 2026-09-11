@@ -345,7 +345,7 @@ void VoiceManager::processBlock(juce::AudioBuffer<float>& buffer,
                     if (idx >= 0 && idx < static_cast<int>(graph->sources.size()))
                     {
                         if (graph->sources[idx])
-                            graph->sources[idx]->noteOff(vel);
+                            graph->sources[idx]->noteOff(note, vel);
                     }
                 }
             }
@@ -355,7 +355,7 @@ void VoiceManager::processBlock(juce::AudioBuffer<float>& buffer,
                 if (idx >= 0 && idx < static_cast<int>(graph->sources.size()))
                 {
                     if (graph->sources[idx])
-                        graph->sources[idx]->noteOff(vel);
+                        graph->sources[idx]->noteOff(note, vel);
                 }
             }
         }

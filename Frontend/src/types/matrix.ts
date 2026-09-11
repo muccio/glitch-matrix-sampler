@@ -29,6 +29,7 @@ export interface SoundSourceData {
   name: string;
   type: SourceType;
   assignedNote: number; // -1 for ALL/omni, 0-127 for specific note
+  outputBus?: number;   // 0 = Main Out 1-2, 1 = Out 2 (3-4), ..., 15 = Out 16 (31-32)
   chokeGroup: number;   // 0 = Off, 1-8
   muted: boolean;
   soloed: boolean;

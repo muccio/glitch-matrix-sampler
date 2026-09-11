@@ -25,7 +25,7 @@ public:
 
     void prepare(double sampleRate, int maxBlockSize) override;
     void noteOn(int noteNumber, float velocity) override;
-    void noteOff(float velocity) override;
+    void noteOff(int noteNumber, float velocity) override;
     void choke() override;
     void processBlock(juce::AudioBuffer<float>& buffer, int startSample, int numSamples, double hostBpm, double hostPpq) override;
     bool isPlaying() const noexcept override;

@@ -157,24 +157,58 @@ void SampleSource::noteOn(int noteNumber, float velocity)
         return;
 
     int voiceIdx = -1;
+
+    // 0. Retrigger active voice with same noteNumber
     for (int i = 0; i < MAX_VOICES; ++i)
     {
-        if (!voices[i].active)
+        if (voices[i].active && voices[i].noteNumber == noteNumber)
         {
             voiceIdx = i;
             break;
         }
     }
 
+    // 1. Find inactive voice
     if (voiceIdx == -1)
     {
-        float minLevel = 100.0f;
         for (int i = 0; i < MAX_VOICES; ++i)
         {
-            float lvl = voices[i].envelope.getCurrentLevel();
-            if (lvl < minLevel)
+            if (!voices[i].active || !voices[i].envelope.isActive())
             {
-                minLevel = lvl;
+                voiceIdx = i;
+                break;
+            }
+        }
+    }
+
+    // 2. If all busy, steal released voice with lowest envelope level
+    if (voiceIdx == -1)
+    {
+        float minLevel = 1e9f;
+        for (int i = 0; i < MAX_VOICES; ++i)
+        {
+            if (voices[i].envelope.getStage() == FastEnvelope::Stage::Release ||
+                voices[i].envelope.getStage() == FastEnvelope::Stage::ChokeRelease)
+            {
+                float lvl = voices[i].envelope.getCurrentLevel();
+                if (lvl < minLevel)
+                {
+                    minLevel = lvl;
+                    voiceIdx = i;
+                }
+            }
+        }
+    }
+
+    // 3. If all voices are sustaining (held notes), steal oldest voice (LRU)
+    if (voiceIdx == -1)
+    {
+        uint32_t oldestAge = std::numeric_limits<uint32_t>::max();
+        for (int i = 0; i < MAX_VOICES; ++i)
+        {
+            if (voices[i].age < oldestAge)
+            {
+                oldestAge = voices[i].age;
                 voiceIdx = i;
             }
         }
@@ -184,6 +218,7 @@ void SampleSource::noteOn(int noteNumber, float velocity)
     {
         auto& v = voices[voiceIdx];
         v.noteNumber = noteNumber;
+        v.age = nextVoiceAge++;
         v.active = true;
 
         float totalSemitones = static_cast<float>(noteNumber - 60) + pitchSemi.load(std::memory_order_relaxed)
@@ -225,11 +260,11 @@ void SampleSource::noteOn(int noteNumber, float velocity)
     }
 }
 
-void SampleSource::noteOff(float /*velocity*/)
+void SampleSource::noteOff(int noteNumber, float /*velocity*/)
 {
     for (auto& v : voices)
     {
-        if (v.active)
+        if (v.active && (noteNumber < 0 || v.noteNumber == noteNumber))
         {
             v.envelope.noteOff();
         }
@@ -302,8 +337,18 @@ void SampleSource::processBlock(juce::AudioBuffer<float>& buffer, int startSampl
     float leftGain = currentGain * std::cos((currentPan + 1.0f) * 0.25f * juce::MathConstants<float>::pi);
     float rightGain = currentGain * std::sin((currentPan + 1.0f) * 0.25f * juce::MathConstants<float>::pi);
 
-    auto* leftOut = buffer.getWritePointer(0, startSample);
-    auto* rightOut = buffer.getNumChannels() > 1 ? buffer.getWritePointer(1, startSample) : leftOut;
+    int bus = getOutputBus();
+    int numChannels = buffer.getNumChannels();
+    int chL = bus * 2;
+    int chR = bus * 2 + 1;
+    if (chR >= numChannels)
+    {
+        chL = 0;
+        chR = std::min(1, numChannels - 1);
+    }
+
+    auto* leftOut = buffer.getWritePointer(chL, startSample);
+    auto* rightOut = buffer.getWritePointer(chR, startSample);
 
     for (int s = 0; s < numSamples; ++s)
     {
@@ -324,24 +369,24 @@ void SampleSource::processBlock(juce::AudioBuffer<float>& buffer, int startSampl
                 float sL = 0.0f, sR = 0.0f;
                 interpolateSample(buf, v.playhead, sL, sR);
 
+                // Advance playhead & manage looping / bounds
                 if (loop)
                 {
+                    // Micro-loop with crossfade
+                    double relPos = v.playhead - v.loopStartFrame;
                     double loopLen = v.loopEndFrame - v.loopStartFrame;
-                    if (loopLen > 10.0)
+
+                    if (v.xfadeFrames > 1.0 && loopLen > v.xfadeFrames)
                     {
-                        // Crossfade logic near loop boundary
-                        if (!rev)
+                        if (relPos > (loopLen - v.xfadeFrames))
                         {
-                            if (v.playhead >= v.loopEndFrame - v.xfadeFrames)
-                            {
-                                double offsetFromStart = v.playhead - (v.loopEndFrame - v.xfadeFrames);
-                                double wrapPos = v.loopStartFrame + offsetFromStart;
-                                float wrapL = 0.0f, wrapR = 0.0f;
-                                interpolateSample(buf, wrapPos, wrapL, wrapR);
-                                float fade = static_cast<float>(offsetFromStart / v.xfadeFrames);
-                                sL = (1.0f - fade) * sL + fade * wrapL;
-                                sR = (1.0f - fade) * sR + fade * wrapR;
-                            }
+                            double xfadeT = (relPos - (loopLen - v.xfadeFrames)) / v.xfadeFrames;
+                            double wrappedPlayhead = v.loopStartFrame + (relPos - (loopLen - v.xfadeFrames));
+                            float wrapL = 0.0f, wrapR = 0.0f;
+                            interpolateSample(buf, wrappedPlayhead, wrapL, wrapR);
+
+                            sL = sL * static_cast<float>(1.0 - xfadeT) + wrapL * static_cast<float>(xfadeT);
+                            sR = sR * static_cast<float>(1.0 - xfadeT) + wrapR * static_cast<float>(xfadeT);
                         }
                     }
 
@@ -404,6 +449,7 @@ std::shared_ptr<SoundSource> SampleSource::clone(int newId) const
     auto cloned = std::make_shared<SampleSource>(newId, name + " (Clone)");
     cloned->setAssignedNote(getAssignedNote());
     cloned->setChokeGroup(getChokeGroup());
+    cloned->setOutputBus(getOutputBus());
     cloned->setMuted(getMuted());
     cloned->setSoloed(getSoloed());
     cloned->setGain(getGain());
@@ -454,6 +500,7 @@ juce::var SampleSource::toVar() const
     obj->setProperty("type", "Sample");
     obj->setProperty("assignedNote", getAssignedNote());
     obj->setProperty("chokeGroup", getChokeGroup());
+    obj->setProperty("outputBus", getOutputBus());
     obj->setProperty("muted", getMuted());
     obj->setProperty("soloed", getSoloed());
     obj->setProperty("gain", getGain());
@@ -504,6 +551,7 @@ void SampleSource::fromVar(const juce::var& v)
     if (obj->hasProperty("name")) name = obj->getProperty("name").toString().toStdString();
     if (obj->hasProperty("assignedNote")) setAssignedNote(static_cast<int>(obj->getProperty("assignedNote")));
     if (obj->hasProperty("chokeGroup")) setChokeGroup(static_cast<int>(obj->getProperty("chokeGroup")));
+    if (obj->hasProperty("outputBus")) setOutputBus(static_cast<int>(obj->getProperty("outputBus")));
     if (obj->hasProperty("muted")) setMuted(static_cast<bool>(obj->getProperty("muted")));
     if (obj->hasProperty("soloed")) setSoloed(static_cast<bool>(obj->getProperty("soloed")));
     if (obj->hasProperty("gain")) setGain(static_cast<float>(obj->getProperty("gain")));

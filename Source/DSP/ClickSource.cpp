@@ -50,7 +50,7 @@ void ClickSource::noteOn(int noteNumber, float velocity)
     activityHoldCounter.store(2, std::memory_order_relaxed);
 }
 
-void ClickSource::noteOff(float /*velocity*/)
+void ClickSource::noteOff(int /*noteNumber*/, float /*velocity*/)
 {
     // Clicks are single-sample impulses; noteOff does not choke or modify the impulse
 }
@@ -90,8 +90,18 @@ void ClickSource::processBlock(juce::AudioBuffer<float>& buffer, int startSample
     float leftGain = currentGain * std::cos((currentPan + 1.0f) * 0.25f * juce::MathConstants<float>::pi);
     float rightGain = currentGain * std::sin((currentPan + 1.0f) * 0.25f * juce::MathConstants<float>::pi);
 
-    auto* leftOut = buffer.getWritePointer(0, startSample);
-    auto* rightOut = buffer.getNumChannels() > 1 ? buffer.getWritePointer(1, startSample) : leftOut;
+    int bus = getOutputBus();
+    int numChannels = buffer.getNumChannels();
+    int chL = bus * 2;
+    int chR = bus * 2 + 1;
+    if (chR >= numChannels)
+    {
+        chL = 0;
+        chR = std::min(1, numChannels - 1);
+    }
+
+    auto* leftOut = buffer.getWritePointer(chL, startSample);
+    auto* rightOut = buffer.getWritePointer(chR, startSample);
 
     for (int s = 0; s < numSamples; ++s)
     {
@@ -143,6 +153,7 @@ std::shared_ptr<SoundSource> ClickSource::clone(int newId) const
     auto cloned = std::make_shared<ClickSource>(newId, name + " (Clone)");
     cloned->setAssignedNote(getAssignedNote());
     cloned->setChokeGroup(getChokeGroup());
+    cloned->setOutputBus(getOutputBus());
     cloned->setGain(getGain());
     cloned->setPan(getPan());
     cloned->setPitchSemi(getPitchSemi());
@@ -182,6 +193,7 @@ juce::var ClickSource::toVar() const
     obj->setProperty("name", juce::String(getName()));
     obj->setProperty("type", "Click");
     obj->setProperty("assignedNote", getAssignedNote());
+    obj->setProperty("outputBus", getOutputBus());
     obj->setProperty("chokeGroup", getChokeGroup());
     obj->setProperty("muted", getMuted());
     obj->setProperty("soloed", getSoloed());
@@ -225,6 +237,7 @@ void ClickSource::fromVar(const juce::var& v)
 
     if (obj->hasProperty("name")) setName(obj->getProperty("name").toString().toStdString());
     if (obj->hasProperty("assignedNote")) setAssignedNote(static_cast<int>(obj->getProperty("assignedNote")));
+    if (obj->hasProperty("outputBus")) setOutputBus(static_cast<int>(obj->getProperty("outputBus")));
     if (obj->hasProperty("chokeGroup")) setChokeGroup(static_cast<int>(obj->getProperty("chokeGroup")));
     if (obj->hasProperty("muted")) setMuted(static_cast<bool>(obj->getProperty("muted")));
     if (obj->hasProperty("soloed")) setSoloed(static_cast<bool>(obj->getProperty("soloed")));

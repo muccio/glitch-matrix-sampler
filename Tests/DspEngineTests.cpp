@@ -839,6 +839,190 @@ int main()
         std::cout << "  -> PASSED." << std::endl;
     }
 
+    // TEST 15: Polyphonic Overlapping Notes Integrity (Long Note vs Short Notes Sequence)
+    {
+        std::cout << "[TEST 15] Testing Polyphony & Overlapping Notes (Long Note Sustaining Through Short Note Sequence)..." << std::endl;
+        VoiceManager testVm;
+        testVm.prepare(sampleRate, blockSize);
+
+        auto osc = std::make_shared<OscillatorSource>(7001, "Poly Synth");
+        osc->setWaveform(OscWaveform::Saw);
+        osc->setAttackMs(1.0f);
+        osc->setDecayMs(100.0f);
+        osc->setSustainLevel(0.5f);
+        osc->setReleaseMs(100.0f);
+        osc->setGain(1.0f);
+        testVm.addSource(osc);
+
+        juce::AudioBuffer<float> buf(2, blockSize);
+
+        // Block 1: Trigger long bass note (Note 36 = C2)
+        buf.clear();
+        juce::MidiBuffer midiBlock1;
+        midiBlock1.addEvent(juce::MidiMessage::noteOn(1, 36, (juce::uint8)120), 0);
+        testVm.processBlock(buf, midiBlock1);
+
+        float bassMagnitude = buf.getMagnitude(0, 0, blockSize);
+        ASSERT_TRUE(bassMagnitude > 0.2f, "Long note should be active and producing sound in block 1");
+
+        // Blocks 2 to 10: Hold bass note while triggering and releasing a sequence of rapid short notes (Notes 60, 62, 64, 67)
+        int shortNotes[] = { 60, 62, 64, 67 };
+        for (int step = 0; step < 8; ++step)
+        {
+            buf.clear();
+            juce::MidiBuffer stepMidi;
+            int shortNote = shortNotes[step % 4];
+
+            // Note On for short note at sample 0, Note Off at sample 256
+            stepMidi.addEvent(juce::MidiMessage::noteOn(1, shortNote, (juce::uint8)100), 0);
+            stepMidi.addEvent(juce::MidiMessage::noteOff(1, shortNote, (juce::uint8)0), 256);
+
+            testVm.processBlock(buf, stepMidi);
+
+            // In the second half of the block (after short note released), bass note MUST still be playing with significant level
+            float secondHalfMag = buf.getMagnitude(0, 260, blockSize - 260);
+            ASSERT_TRUE(secondHalfMag > 0.15f, "Long held note must NOT be killed or put into release by short note noteOff");
+        }
+
+        // Now run 3 blocks with NO MIDI: bass note must sustain continuously indefinitely
+        for (int i = 0; i < 3; ++i)
+        {
+            buf.clear();
+            juce::MidiBuffer emptyMidi;
+            testVm.processBlock(buf, emptyMidi);
+            float sustainMag = buf.getMagnitude(0, 0, blockSize);
+            ASSERT_TRUE(sustainMag > 0.15f, "Long held note must sustain continuously when no noteOff for its pitch is sent");
+        }
+
+        // Finally send NoteOff for bass note 36
+        buf.clear();
+        juce::MidiBuffer releaseMidi;
+        releaseMidi.addEvent(juce::MidiMessage::noteOff(1, 36, (juce::uint8)0), 0);
+        testVm.processBlock(buf, releaseMidi);
+
+        // Allow release time to pass (100ms = ~10 blocks at 512 samples / 48kHz)
+        for (int i = 0; i < 15; ++i)
+        {
+            buf.clear();
+            juce::MidiBuffer emptyMidi;
+            testVm.processBlock(buf, emptyMidi);
+        }
+
+        float finalMag = buf.getMagnitude(0, 0, blockSize);
+        ASSERT_NEAR(finalMag, 0.0f, 1e-4, "After release time has elapsed, voice must be silent");
+
+        std::cout << "  -> Verified long note maintains sustain cleanly through 8 cycles of short note trigger/release events without retrigger or voice theft." << std::endl;
+        std::cout << "  -> PASSED." << std::endl;
+    }
+
+    // TEST 16: Multi-Bus Audio Output Routing & Fallback
+    {
+        std::cout << "[TEST 16] Testing Multi-Bus Audio Output Routing & Stereo Fallback..." << std::endl;
+        VoiceManager testVm;
+        testVm.prepare(sampleRate, blockSize);
+
+        auto oscMain = std::make_shared<OscillatorSource>(8001, "Main Synth");
+        oscMain->setAssignedNote(60); // C4
+        oscMain->setOutputBus(0);     // Main Out (channels 0, 1)
+        oscMain->setGain(1.0f);
+        oscMain->setWaveform(OscWaveform::Sine);
+
+        auto oscAux3 = std::make_shared<OscillatorSource>(8002, "Aux 3 Synth");
+        oscAux3->setAssignedNote(64); // E4
+        oscAux3->setOutputBus(2);     // Aux 3 (channels 4, 5)
+        oscAux3->setGain(1.0f);
+        oscAux3->setWaveform(OscWaveform::Square);
+
+        testVm.addSource(oscMain);
+        testVm.addSource(oscAux3);
+
+        // 1. Buffer with 8 channels (channels 0..7)
+        juce::AudioBuffer<float> multiBuf(8, blockSize);
+
+        // Trigger only oscAux3 on Note 64
+        multiBuf.clear();
+        juce::MidiBuffer midiAux;
+        midiAux.addEvent(juce::MidiMessage::noteOn(1, 64, (juce::uint8)127), 0);
+        testVm.processBlock(multiBuf, midiAux);
+
+        // Check channel separation:
+        // Channels 0, 1 (Main) should have zero magnitude
+        ASSERT_NEAR(multiBuf.getMagnitude(0, 0, blockSize), 0.0f, 1e-5, "Main Out L should be silent when only Aux 3 plays");
+        ASSERT_NEAR(multiBuf.getMagnitude(1, 0, blockSize), 0.0f, 1e-5, "Main Out R should be silent when only Aux 3 plays");
+
+        // Channels 2, 3 (Aux 2) should have zero magnitude
+        ASSERT_NEAR(multiBuf.getMagnitude(2, 0, blockSize), 0.0f, 1e-5, "Aux 2 L should be silent");
+        ASSERT_NEAR(multiBuf.getMagnitude(3, 0, blockSize), 0.0f, 1e-5, "Aux 2 R should be silent");
+
+        // Channels 4, 5 (Aux 3) MUST have sound
+        ASSERT_TRUE(multiBuf.getMagnitude(4, 0, blockSize) > 0.3f, "Aux 3 L must contain audio from oscAux3");
+        ASSERT_TRUE(multiBuf.getMagnitude(5, 0, blockSize) > 0.3f, "Aux 3 R must contain audio from oscAux3");
+
+        // Channels 6, 7 (Aux 4) should have zero magnitude
+        ASSERT_NEAR(multiBuf.getMagnitude(6, 0, blockSize), 0.0f, 1e-5, "Aux 4 L should be silent");
+        ASSERT_NEAR(multiBuf.getMagnitude(7, 0, blockSize), 0.0f, 1e-5, "Aux 4 R should be silent");
+
+        // Now trigger BOTH Note 60 (Main) and Note 64 (Aux 3) simultaneously
+        multiBuf.clear();
+        juce::MidiBuffer midiBoth;
+        midiBoth.addEvent(juce::MidiMessage::noteOn(1, 60, (juce::uint8)127), 0);
+        midiBoth.addEvent(juce::MidiMessage::noteOn(1, 64, (juce::uint8)127), 0);
+        testVm.processBlock(multiBuf, midiBoth);
+
+        ASSERT_TRUE(multiBuf.getMagnitude(0, 0, blockSize) > 0.3f, "Main Out L must receive audio from oscMain");
+        ASSERT_TRUE(multiBuf.getMagnitude(1, 0, blockSize) > 0.3f, "Main Out R must receive audio from oscMain");
+        ASSERT_NEAR(multiBuf.getMagnitude(2, 0, blockSize), 0.0f, 1e-5, "Aux 2 L should be silent during simultaneous play");
+        ASSERT_NEAR(multiBuf.getMagnitude(3, 0, blockSize), 0.0f, 1e-5, "Aux 2 R should be silent during simultaneous play");
+        ASSERT_TRUE(multiBuf.getMagnitude(4, 0, blockSize) > 0.3f, "Aux 3 L must receive audio from oscAux3");
+        ASSERT_TRUE(multiBuf.getMagnitude(5, 0, blockSize) > 0.3f, "Aux 3 R must receive audio from oscAux3");
+        ASSERT_NEAR(multiBuf.getMagnitude(6, 0, blockSize), 0.0f, 1e-5, "Aux 4 L should be silent during simultaneous play");
+        ASSERT_NEAR(multiBuf.getMagnitude(7, 0, blockSize), 0.0f, 1e-5, "Aux 4 R should be silent during simultaneous play");
+
+        std::cout << "  -> Multi-bus discrete output routing verified: audio routed exclusively to channels [4, 5] (Aux 3) and simultaneously to [0, 1] (Main)." << std::endl;
+
+        // 2. Test Safe Stereo Fallback:
+        // If host provides only a 2-channel buffer, an Aux-routed source must fall back cleanly to channels 0 & 1
+        juce::AudioBuffer<float> stereoBuf(2, blockSize);
+        stereoBuf.clear();
+        juce::MidiBuffer midiFallback;
+        midiFallback.addEvent(juce::MidiMessage::noteOn(1, 64, (juce::uint8)127), 0);
+        testVm.processBlock(stereoBuf, midiFallback);
+
+        ASSERT_TRUE(stereoBuf.getMagnitude(0, 0, blockSize) > 0.3f, "Stereo fallback: Aux source should cleanly output to Ch 0 when buffer has 2 channels");
+        ASSERT_TRUE(stereoBuf.getMagnitude(1, 0, blockSize) > 0.3f, "Stereo fallback: Aux source should cleanly output to Ch 1 when buffer has 2 channels");
+
+        std::cout << "  -> Safe stereo fallback verified: Aux-routed source outputs cleanly on stereo channels [0, 1] without crash or clipping." << std::endl;
+
+        // 3. Serialization toVar / fromVar test for outputBus
+        auto oscVar = oscAux3->toVar();
+        OscillatorSource restoredOsc(8003);
+        restoredOsc.fromVar(oscVar);
+        ASSERT_TRUE(restoredOsc.getOutputBus() == 2, "Restored oscillator outputBus must be 2");
+
+        NoiseSource noise(8004);
+        noise.setOutputBus(5);
+        auto noiseVar = noise.toVar();
+        NoiseSource restoredNoise(8005);
+        restoredNoise.fromVar(noiseVar);
+        ASSERT_TRUE(restoredNoise.getOutputBus() == 5, "Restored noise outputBus must be 5");
+
+        SampleSource sample(8006);
+        sample.setOutputBus(10);
+        auto sampleVar = sample.toVar();
+        SampleSource restoredSample(8007);
+        restoredSample.fromVar(sampleVar);
+        ASSERT_TRUE(restoredSample.getOutputBus() == 10, "Restored sample outputBus must be 10");
+
+        ClickSource click(8008);
+        click.setOutputBus(15);
+        auto clickVar = click.toVar();
+        ClickSource restoredClick(8009);
+        restoredClick.fromVar(clickVar);
+        ASSERT_TRUE(restoredClick.getOutputBus() == 15, "Restored click outputBus must be 15");
+
+        std::cout << "  -> PASSED." << std::endl;
+    }
+
     std::cout << "=================================================" << std::endl;
     std::cout << "  ALL DSP & THREAD-SAFETY TESTS PASSED (100%)    " << std::endl;
     std::cout << "=================================================" << std::endl;

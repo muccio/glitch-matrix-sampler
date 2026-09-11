@@ -1,8 +1,19 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 
+GlitchMatrixSamplerAudioProcessor::BusesProperties GlitchMatrixSamplerAudioProcessor::createBusesProperties()
+{
+    auto props = BusesProperties()
+                     .withOutput("Main Output", juce::AudioChannelSet::stereo(), true);
+    for (int i = 2; i <= 16; ++i)
+    {
+        props = props.withOutput("Out " + juce::String(i), juce::AudioChannelSet::stereo(), false);
+    }
+    return props;
+}
+
 GlitchMatrixSamplerAudioProcessor::GlitchMatrixSamplerAudioProcessor()
-    : AudioProcessor(BusesProperties().withOutput("Output", juce::AudioChannelSet::stereo(), true))
+    : AudioProcessor(createBusesProperties())
 {
     formatManager.registerBasicFormats();
 
@@ -80,9 +91,16 @@ void GlitchMatrixSamplerAudioProcessor::releaseResources()
 
 bool GlitchMatrixSamplerAudioProcessor::isBusesLayoutSupported(const BusesLayout& layouts) const
 {
-    if (layouts.getMainOutputChannelSet() != juce::AudioChannelSet::mono()
-        && layouts.getMainOutputChannelSet() != juce::AudioChannelSet::stereo())
+    const auto& mainOut = layouts.getMainOutputChannelSet();
+    if (mainOut != juce::AudioChannelSet::mono() && mainOut != juce::AudioChannelSet::stereo())
         return false;
+
+    for (int i = 1; i < layouts.outputBuses.size(); ++i)
+    {
+        const auto& bus = layouts.outputBuses[i];
+        if (!bus.isDisabled() && bus != juce::AudioChannelSet::mono() && bus != juce::AudioChannelSet::stereo())
+            return false;
+    }
 
     return true;
 }

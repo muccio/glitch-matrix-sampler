@@ -3,7 +3,8 @@ import { SoundSourceData } from '../types/matrix';
 import { EnvelopeEditor } from './EnvelopeEditor';
 import { GlitchFXPanel } from './GlitchFXPanel';
 import { WaveformViewer } from './WaveformViewer';
-import { Sliders, Volume2, MoveHorizontal, Disc, Cpu, Radio, Zap } from 'lucide-react';
+import { getNoteLabel } from './SourceCard';
+import { Sliders, Volume2, MoveHorizontal, Disc, Cpu, Radio, Zap, Share2 } from 'lucide-react';
 
 interface SourceInspectorProps {
   source: SoundSourceData | null;
@@ -105,6 +106,70 @@ export const SourceInspector: React.FC<SourceInspectorProps> = ({ source, onUpda
               {(source.gain * 100).toFixed(0)}%
             </span>
           </div>
+        </div>
+      </div>
+
+      {/* Routing & Multi-Out Bar */}
+      <div className="bg-glitch-panel/40 border border-glitch-border rounded px-3 py-2 flex items-center justify-between text-xs">
+        <div className="flex items-center gap-3">
+          <span className="text-[10px] font-bold text-glitch-dim tracking-wider">ROUTING:</span>
+
+          {/* MIDI NOTE */}
+          <div className="flex items-center gap-1.5 bg-glitch-dark px-2.5 py-1 rounded border border-glitch-border text-xs">
+            <span className="text-[10px] text-glitch-dim">NOTE:</span>
+            <select
+              value={source.assignedNote}
+              onChange={(e) => onUpdate('assignedNote', parseInt(e.target.value))}
+              className="bg-transparent text-glitch-cyan font-bold outline-none cursor-pointer"
+            >
+              <option value={-1} className="bg-glitch-panel text-glitch-text">OMNI (ALL)</option>
+              {Array.from({ length: 128 }, (_, i) => (
+                <option key={i} value={i} className="bg-glitch-panel text-glitch-text">
+                  {getNoteLabel(i)}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* CHOKE */}
+          <div className="flex items-center gap-1.5 bg-glitch-dark px-2.5 py-1 rounded border border-glitch-border text-xs">
+            <span className="text-[10px] text-glitch-dim">CHOKE:</span>
+            <select
+              value={source.chokeGroup}
+              onChange={(e) => onUpdate('chokeGroup', parseInt(e.target.value))}
+              className="bg-transparent text-glitch-pink font-bold outline-none cursor-pointer"
+            >
+              <option value={0} className="bg-glitch-panel text-glitch-text">OFF</option>
+              {[1, 2, 3, 4, 5, 6, 7, 8].map((g) => (
+                <option key={g} value={g} className="bg-glitch-panel text-glitch-text">
+                  GROUP {g}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* DAW MULTI-OUT BUS ROUTING */}
+        <div className="flex items-center gap-2 bg-glitch-dark px-3 py-1 rounded border border-emerald-500/40 text-xs">
+          <Share2 className="w-3.5 h-3.5 text-emerald-400" />
+          <span className="text-[10px] text-glitch-dim font-bold tracking-wider">AUDIO OUT:</span>
+          <select
+            value={source.outputBus ?? 0}
+            onChange={(e) => onUpdate('outputBus', parseInt(e.target.value))}
+            className="bg-transparent text-emerald-400 font-bold outline-none cursor-pointer"
+          >
+            <option value={0} className="bg-glitch-panel text-glitch-text">MAIN OUT (CH 1-2)</option>
+            {Array.from({ length: 15 }, (_, i) => {
+              const busIdx = i + 1;
+              const chL = busIdx * 2 + 1;
+              const chR = busIdx * 2 + 2;
+              return (
+                <option key={busIdx} value={busIdx} className="bg-glitch-panel text-glitch-text">
+                  OUT {busIdx + 1} (CH {chL}-{chR})
+                </option>
+              );
+            })}
+          </select>
         </div>
       </div>
 

@@ -47,6 +47,8 @@ public:
     void injectNoteOff(int noteNumber);
 
 private:
+    static BusesProperties createBusesProperties();
+
     GlitchDSP::VoiceManager voiceManager;
     juce::AudioFormatManager formatManager;
 

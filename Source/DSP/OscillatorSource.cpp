@@ -119,26 +119,57 @@ void OscillatorSource::noteOn(int noteNumber, float velocity)
 {
     int voiceIdx = -1;
 
-    // 1. Find inactive voice
+    // 0. Check if this exact note is already actively playing on a voice (retrigger)
     for (int i = 0; i < MAX_VOICES; ++i)
     {
-        if (!voices[i].active)
+        if (voices[i].active && voices[i].noteNumber == noteNumber)
         {
             voiceIdx = i;
             break;
         }
     }
 
-    // 2. If all busy, steal lowest envelope level
+    // 1. Find inactive voice
     if (voiceIdx == -1)
     {
-        float minLevel = 100.0f;
         for (int i = 0; i < MAX_VOICES; ++i)
         {
-            float lvl = voices[i].envelope.getCurrentLevel();
-            if (lvl < minLevel)
+            if (!voices[i].active || !voices[i].envelope.isActive())
             {
-                minLevel = lvl;
+                voiceIdx = i;
+                break;
+            }
+        }
+    }
+
+    // 2. If all busy, steal released voice with lowest envelope level
+    if (voiceIdx == -1)
+    {
+        float minLevel = 1e9f;
+        for (int i = 0; i < MAX_VOICES; ++i)
+        {
+            if (voices[i].envelope.getStage() == FastEnvelope::Stage::Release ||
+                voices[i].envelope.getStage() == FastEnvelope::Stage::ChokeRelease)
+            {
+                float lvl = voices[i].envelope.getCurrentLevel();
+                if (lvl < minLevel)
+                {
+                    minLevel = lvl;
+                    voiceIdx = i;
+                }
+            }
+        }
+    }
+
+    // 3. If all voices are sustaining (held notes), steal oldest voice (LRU)
+    if (voiceIdx == -1)
+    {
+        uint32_t oldestAge = std::numeric_limits<uint32_t>::max();
+        for (int i = 0; i < MAX_VOICES; ++i)
+        {
+            if (voices[i].age < oldestAge)
+            {
+                oldestAge = voices[i].age;
                 voiceIdx = i;
             }
         }
@@ -149,6 +180,7 @@ void OscillatorSource::noteOn(int noteNumber, float velocity)
         auto& v = voices[voiceIdx];
         bool wasActive = v.active && v.envelope.isActive();
         v.noteNumber = noteNumber;
+        v.age = nextVoiceAge++;
         v.active = true;
 
         float baseFreq = frequency.load(std::memory_order_relaxed);
@@ -193,11 +225,11 @@ void OscillatorSource::noteOn(int noteNumber, float velocity)
     }
 }
 
-void OscillatorSource::noteOff(float /*velocity*/)
+void OscillatorSource::noteOff(int noteNumber, float /*velocity*/)
 {
     for (auto& v : voices)
     {
-        if (v.active)
+        if (v.active && (noteNumber < 0 || v.noteNumber == noteNumber))
         {
             v.envelope.noteOff();
         }
@@ -299,8 +331,18 @@ void OscillatorSource::processBlock(juce::AudioBuffer<float>& buffer, int startS
     float leftGain = currentGain * std::cos((currentPan + 1.0f) * 0.25f * juce::MathConstants<float>::pi);
     float rightGain = currentGain * std::sin((currentPan + 1.0f) * 0.25f * juce::MathConstants<float>::pi);
 
-    auto* leftOut = buffer.getWritePointer(0, startSample);
-    auto* rightOut = buffer.getNumChannels() > 1 ? buffer.getWritePointer(1, startSample) : leftOut;
+    int bus = getOutputBus();
+    int numChannels = buffer.getNumChannels();
+    int chL = bus * 2;
+    int chR = bus * 2 + 1;
+    if (chR >= numChannels)
+    {
+        chL = 0;
+        chR = std::min(1, numChannels - 1);
+    }
+
+    auto* leftOut = buffer.getWritePointer(chL, startSample);
+    auto* rightOut = buffer.getWritePointer(chR, startSample);
 
     for (int s = 0; s < numSamples; ++s)
     {
@@ -341,6 +383,7 @@ std::shared_ptr<SoundSource> OscillatorSource::clone(int newId) const
     auto cloned = std::make_shared<OscillatorSource>(newId, name + " (Clone)");
     cloned->setAssignedNote(getAssignedNote());
     cloned->setChokeGroup(getChokeGroup());
+    cloned->setOutputBus(getOutputBus());
     cloned->setMuted(getMuted());
     cloned->setSoloed(getSoloed());
     cloned->setGain(getGain());
@@ -382,6 +425,7 @@ juce::var OscillatorSource::toVar() const
     obj->setProperty("type", "Oscillator");
     obj->setProperty("assignedNote", getAssignedNote());
     obj->setProperty("chokeGroup", getChokeGroup());
+    obj->setProperty("outputBus", getOutputBus());
     obj->setProperty("muted", getMuted());
     obj->setProperty("soloed", getSoloed());
     obj->setProperty("gain", getGain());
@@ -427,6 +471,7 @@ void OscillatorSource::fromVar(const juce::var& v)
     if (obj->hasProperty("name")) name = obj->getProperty("name").toString().toStdString();
     if (obj->hasProperty("assignedNote")) setAssignedNote(static_cast<int>(obj->getProperty("assignedNote")));
     if (obj->hasProperty("chokeGroup")) setChokeGroup(static_cast<int>(obj->getProperty("chokeGroup")));
+    if (obj->hasProperty("outputBus")) setOutputBus(static_cast<int>(obj->getProperty("outputBus")));
     if (obj->hasProperty("muted")) setMuted(static_cast<bool>(obj->getProperty("muted")));
     if (obj->hasProperty("soloed")) setSoloed(static_cast<bool>(obj->getProperty("soloed")));
     if (obj->hasProperty("gain")) setGain(static_cast<float>(obj->getProperty("gain")));

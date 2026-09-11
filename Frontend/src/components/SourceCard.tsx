@@ -11,9 +11,9 @@ interface SourceCardProps {
   onDelete: () => void;
 }
 
-const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+export const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 
-function getNoteLabel(note: number): string {
+export function getNoteLabel(note: number): string {
   if (note < 0) return 'ALL';
   const octave = Math.floor(note / 12) - 1;
   const noteIndex = note % 12;
@@ -131,23 +131,24 @@ export const SourceCard: React.FC<SourceCardProps> = ({
         </div>
       </div>
 
-      {/* Middle Row: Assigned MIDI Note & Choke Group */}
+      {/* Middle Row: Assigned MIDI Note, Choke Group & Output Bus */}
       <div
-        className="grid grid-cols-2 gap-2 text-[10px]"
+        className="grid grid-cols-3 gap-1 text-[9px]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* MIDI Note selector */}
-        <div className="bg-glitch-dark/70 px-2 py-1 rounded border border-glitch-border/60 flex items-center justify-between">
-          <span className="text-glitch-dim flex items-center gap-1">
-            <Music className="w-3 h-3 text-glitch-cyan" />
-            NOTE:
+        <div className="bg-glitch-dark/70 px-1.5 py-1 rounded border border-glitch-border/60 flex items-center justify-between min-w-0">
+          <span className="text-glitch-dim flex items-center gap-0.5 shrink-0">
+            <Music className="w-2.5 h-2.5 text-glitch-cyan" />
+            N:
           </span>
           <select
             value={source.assignedNote}
             onChange={(e) => onUpdate('assignedNote', parseInt(e.target.value))}
-            className="bg-transparent text-glitch-cyan font-bold outline-none cursor-pointer text-right"
+            className="bg-transparent text-glitch-cyan font-bold outline-none cursor-pointer text-right truncate min-w-0"
+            title="Assigned MIDI Note"
           >
-            <option value={-1}>OMNI (ALL)</option>
+            <option value={-1} className="bg-glitch-panel text-glitch-text">OMNI</option>
             {Array.from({ length: 128 }, (_, i) => (
               <option key={i} value={i} className="bg-glitch-panel text-glitch-text">
                 {getNoteLabel(i)}
@@ -157,17 +158,36 @@ export const SourceCard: React.FC<SourceCardProps> = ({
         </div>
 
         {/* Choke Group Selector */}
-        <div className="bg-glitch-dark/70 px-2 py-1 rounded border border-glitch-border/60 flex items-center justify-between">
-          <span className="text-glitch-dim">CHOKE:</span>
+        <div className="bg-glitch-dark/70 px-1.5 py-1 rounded border border-glitch-border/60 flex items-center justify-between min-w-0">
+          <span className="text-glitch-dim shrink-0">CHK:</span>
           <select
             value={source.chokeGroup}
             onChange={(e) => onUpdate('chokeGroup', parseInt(e.target.value))}
-            className="bg-transparent text-glitch-pink font-bold outline-none cursor-pointer text-right"
+            className="bg-transparent text-glitch-pink font-bold outline-none cursor-pointer text-right min-w-0"
+            title="Choke Group"
           >
             <option value={0} className="bg-glitch-panel text-glitch-text">OFF</option>
             {[1, 2, 3, 4, 5, 6, 7, 8].map((g) => (
               <option key={g} value={g} className="bg-glitch-panel text-glitch-text">
-                GRP {g}
+                G{g}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Audio Output Bus Selector */}
+        <div className="bg-glitch-dark/70 px-1.5 py-1 rounded border border-emerald-500/40 flex items-center justify-between min-w-0">
+          <span className="text-glitch-dim shrink-0">OUT:</span>
+          <select
+            value={source.outputBus ?? 0}
+            onChange={(e) => onUpdate('outputBus', parseInt(e.target.value))}
+            className="bg-transparent text-emerald-400 font-bold outline-none cursor-pointer text-right min-w-0"
+            title="DAW Audio Output Routing (Main or Aux 2-16)"
+          >
+            <option value={0} className="bg-glitch-panel text-glitch-text">MAIN</option>
+            {Array.from({ length: 15 }, (_, i) => (
+              <option key={i + 1} value={i + 1} className="bg-glitch-panel text-glitch-text">
+                OUT {i + 2}
               </option>
             ))}
           </select>

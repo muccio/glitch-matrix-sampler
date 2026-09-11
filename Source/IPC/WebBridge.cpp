@@ -135,6 +135,10 @@ juce::WebBrowserComponent::Options WebBridge::setupOptions(
                     src->setChokeGroup(static_cast<int>(val));
                     proc.getVoiceManager().rebuildGraph();
                 }
+                else if (paramId == "outputBus")
+                {
+                    src->setOutputBus(static_cast<int>(val));
+                }
                 else if (paramId == "muted") src->setMuted(static_cast<bool>(val));
                 else if (paramId == "soloed") src->setSoloed(static_cast<bool>(val));
                 else if (paramId == "gain") src->setGain(static_cast<float>(val));

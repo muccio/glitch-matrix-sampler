@@ -10,14 +10,14 @@ namespace GlitchDSP
 class SampleSource : public SoundSource
 {
 public:
-    static constexpr int MAX_VOICES = 8;
+    static constexpr int MAX_VOICES = 32;
 
     SampleSource(int id, const std::string& sourceName = "Sample");
     ~SampleSource() override = default;
 
     void prepare(double sampleRate, int maxBlockSize) override;
     void noteOn(int noteNumber, float velocity) override;
-    void noteOff(float velocity) override;
+    void noteOff(int noteNumber, float velocity) override;
     void choke() override;
     void processBlock(juce::AudioBuffer<float>& buffer, int startSample, int numSamples, double hostBpm, double hostPpq) override;
     bool isPlaying() const noexcept override;
@@ -89,6 +89,7 @@ private:
         double playhead = 0.0;
         double speedFactor = 1.0;
         int noteNumber = -1;
+        uint32_t age = 0;
         bool active = false;
         FastEnvelope envelope;
 
@@ -104,6 +105,7 @@ private:
     std::shared_ptr<juce::AudioBuffer<float>> sampleBuffer;
 
     std::array<Voice, MAX_VOICES> voices;
+    uint32_t nextVoiceAge = 1;
     GlitchFX glitchFx;
 
     std::atomic<float> startPoint { 0.0f };
