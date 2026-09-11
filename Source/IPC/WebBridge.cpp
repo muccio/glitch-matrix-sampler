@@ -262,6 +262,16 @@ juce::WebBrowserComponent::Options WebBridge::setupOptions(
                     if (auto* osc = dynamic_cast<OscillatorSource*>(src.get()))
                         osc->setGlitchMorph(static_cast<float>(val));
                 }
+                else if (paramId == "frequency")
+                {
+                    if (auto* osc = dynamic_cast<OscillatorSource*>(src.get()))
+                        osc->setFrequency(static_cast<float>(val));
+                }
+                else if (paramId == "pitchTrack")
+                {
+                    if (auto* osc = dynamic_cast<OscillatorSource*>(src.get()))
+                        osc->setPitchTrack(static_cast<bool>(val));
+                }
                 // Noise specific
                 else if (paramId == "noiseType")
                 {

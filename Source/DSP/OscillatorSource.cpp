@@ -72,6 +72,49 @@ void OscillatorSource::setCurveShape(float shape) noexcept
     }
 }
 
+void OscillatorSource::setFrequency(float f) noexcept
+{
+    float clamped = std::clamp(f, 10.0f, 20000.0f);
+    frequency.store(clamped, std::memory_order_relaxed);
+
+    bool pt = pitchTrack.load(std::memory_order_relaxed);
+    float semi = pitchSemi.load(std::memory_order_relaxed) + (pitchFine.load(std::memory_order_relaxed) * 0.01f);
+
+    for (auto& v : voices)
+    {
+        if (v.active)
+        {
+            float totalSemitones = semi;
+            if (pt && v.noteNumber >= 0)
+                totalSemitones += static_cast<float>(v.noteNumber - 69);
+
+            double targetFreq = static_cast<double>(clamped) * std::pow(2.0, totalSemitones / 12.0);
+            v.phaseInc = targetFreq / currentSampleRate;
+        }
+    }
+}
+
+void OscillatorSource::setPitchTrack(bool pt) noexcept
+{
+    pitchTrack.store(pt, std::memory_order_relaxed);
+
+    float f = frequency.load(std::memory_order_relaxed);
+    float semi = pitchSemi.load(std::memory_order_relaxed) + (pitchFine.load(std::memory_order_relaxed) * 0.01f);
+
+    for (auto& v : voices)
+    {
+        if (v.active)
+        {
+            float totalSemitones = semi;
+            if (pt && v.noteNumber >= 0)
+                totalSemitones += static_cast<float>(v.noteNumber - 69);
+
+            double targetFreq = static_cast<double>(f) * std::pow(2.0, totalSemitones / 12.0);
+            v.phaseInc = targetFreq / currentSampleRate;
+        }
+    }
+}
+
 void OscillatorSource::noteOn(int noteNumber, float velocity)
 {
     int voiceIdx = -1;
@@ -108,9 +151,17 @@ void OscillatorSource::noteOn(int noteNumber, float velocity)
         v.noteNumber = noteNumber;
         v.active = true;
 
-        float totalSemitones = static_cast<float>(noteNumber - 69) + pitchSemi.load(std::memory_order_relaxed)
+        float baseFreq = frequency.load(std::memory_order_relaxed);
+        bool pt = pitchTrack.load(std::memory_order_relaxed);
+
+        float totalSemitones = pitchSemi.load(std::memory_order_relaxed)
                                + (pitchFine.load(std::memory_order_relaxed) * 0.01f);
-        double freq = 440.0 * std::pow(2.0, totalSemitones / 12.0);
+        if (pt)
+        {
+            totalSemitones += static_cast<float>(noteNumber - 69);
+        }
+
+        double freq = static_cast<double>(baseFreq) * std::pow(2.0, totalSemitones / 12.0);
         v.phaseInc = freq / currentSampleRate;
 
         // Zero-crossing phase initialization for click-free attack transients
@@ -300,6 +351,8 @@ std::shared_ptr<SoundSource> OscillatorSource::clone(int newId) const
     cloned->setWaveform(getWaveform());
     cloned->setPulseWidth(getPulseWidth());
     cloned->setGlitchMorph(getGlitchMorph());
+    cloned->setFrequency(getFrequency());
+    cloned->setPitchTrack(getPitchTrack());
 
     cloned->setAttackMs(getAttackMs());
     cloned->setHoldMs(getHoldMs());
@@ -339,6 +392,8 @@ juce::var OscillatorSource::toVar() const
     obj->setProperty("waveform", static_cast<int>(getWaveform()));
     obj->setProperty("pulseWidth", getPulseWidth());
     obj->setProperty("glitchMorph", getGlitchMorph());
+    obj->setProperty("frequency", getFrequency());
+    obj->setProperty("pitchTrack", getPitchTrack());
 
     obj->setProperty("attackMs", getAttackMs());
     obj->setProperty("holdMs", getHoldMs());
@@ -382,6 +437,8 @@ void OscillatorSource::fromVar(const juce::var& v)
     if (obj->hasProperty("waveform")) setWaveform(static_cast<OscWaveform>(static_cast<int>(obj->getProperty("waveform"))));
     if (obj->hasProperty("pulseWidth")) setPulseWidth(static_cast<float>(obj->getProperty("pulseWidth")));
     if (obj->hasProperty("glitchMorph")) setGlitchMorph(static_cast<float>(obj->getProperty("glitchMorph")));
+    if (obj->hasProperty("frequency")) setFrequency(static_cast<float>(obj->getProperty("frequency")));
+    if (obj->hasProperty("pitchTrack")) setPitchTrack(static_cast<bool>(obj->getProperty("pitchTrack")));
 
     if (obj->hasProperty("attackMs")) setAttackMs(static_cast<float>(obj->getProperty("attackMs")));
     if (obj->hasProperty("holdMs")) setHoldMs(static_cast<float>(obj->getProperty("holdMs")));

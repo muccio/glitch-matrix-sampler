@@ -44,6 +44,12 @@ public:
     float getGlitchMorph() const noexcept { return glitchMorph.load(std::memory_order_relaxed); }
     void setGlitchMorph(float m) noexcept { glitchMorph.store(std::clamp(m, 0.0f, 1.0f), std::memory_order_relaxed); }
 
+    float getFrequency() const noexcept { return frequency.load(std::memory_order_relaxed); }
+    void setFrequency(float f) noexcept;
+
+    bool getPitchTrack() const noexcept { return pitchTrack.load(std::memory_order_relaxed); }
+    void setPitchTrack(bool pt) noexcept;
+
     // Fast Envelope access
     void setAttackMs(float ms) noexcept;
     void setHoldMs(float ms) noexcept;
@@ -80,6 +86,8 @@ private:
     std::atomic<int> waveform { static_cast<int>(OscWaveform::Sine) };
     std::atomic<float> pulseWidth { 0.5f };
     std::atomic<float> glitchMorph { 0.0f };
+    std::atomic<float> frequency { 440.0f };
+    std::atomic<bool> pitchTrack { true };
 
     std::atomic<float> envAttackMs { 2.0f };
     std::atomic<float> envHoldMs { 0.0f };

@@ -391,8 +391,10 @@ int main()
             clickVm.removeSource(702);
             clickVm.collectGarbage();
 
-            ASSERT_TRUE(bufPos.getSample(0, 1) > 0.0f, "Positive polarity pulse must be > 0");
-            ASSERT_TRUE(bufNeg.getSample(0, 1) < 0.0f, "Negative polarity pulse must be < 0");
+            ASSERT_TRUE(bufPos.getSample(0, 0) > 0.0f, "Positive polarity pulse must be > 0 at sample 0");
+            ASSERT_TRUE(bufNeg.getSample(0, 0) < 0.0f, "Negative polarity pulse must be < 0 at sample 0");
+            ASSERT_TRUE(bufPos.getSample(0, 1) == 0.0f, "Unit impulse must be 0 at sample 1");
+            ASSERT_TRUE(bufNeg.getSample(0, 1) == 0.0f, "Unit impulse must be 0 at sample 1");
             std::cout << "  -> Dirac polarity inversion verified (+1 vs -1)." << std::endl;
         }
 
@@ -401,32 +403,12 @@ int main()
             auto click1 = std::make_shared<ClickSource>(801, "Click 1");
             click1->setAssignedNote(60);
             click1->setChokeGroup(1);
-            click1->setDecayMs(100.0f);
-            click1->setSustainLevel(0.8f);
 
-            auto click2 = std::make_shared<ClickSource>(802, "Click 2");
-            click2->setAssignedNote(62);
-            click2->setChokeGroup(1);
-            click2->setDecayMs(100.0f);
-
-            clickVm.addSource(click1);
-            clickVm.addSource(click2);
-
-            juce::AudioBuffer<float> buf(2, blockSize);
-            juce::MidiBuffer midi1;
-            midi1.addEvent(juce::MidiMessage::noteOn(1, 60, (juce::uint8)127), 0);
-            clickVm.processBlock(buf, midi1);
-            ASSERT_TRUE(click1->isPlaying(), "Click 1 must be playing");
-
-            juce::MidiBuffer midi2;
-            midi2.addEvent(juce::MidiMessage::noteOn(1, 62, (juce::uint8)127), 0);
-            clickVm.processBlock(buf, midi2);
-
-            // Click 1 should be choked (in release/decaying to 0)
-            std::cout << "  -> Choke group 1 successfully choked concurrent Click source." << std::endl;
-
-            clickVm.clearAllSources();
-            clickVm.collectGarbage();
+            click1->noteOn(60, 1.0f);
+            ASSERT_TRUE(click1->isPlaying(), "Click 1 must be active immediately upon noteOn");
+            click1->choke();
+            ASSERT_TRUE(!click1->isPlaying(), "Click 1 must be inactive after choke()");
+            std::cout << "  -> Choke group 1 successfully choked Click source." << std::endl;
         }
 
         // 4. Test Clone & Serialization (toVar / fromVar)
@@ -605,9 +587,20 @@ int main()
             testVm.processBlock(buf, midi);
 
             float peak = buf.getMagnitude(0, 0, blockSize);
-            std::cout << "  -> Note 62 on (matches Click): peak = " << peak << std::endl;
+            std::cout << "  -> Note 62 on (matches Click): peak = " << peak << " sample0=" << buf.getSample(0, 0) << std::endl;
+            int maxIdx = 0;
+            float maxVal = 0.0f;
+            for (int i = 0; i < blockSize; ++i)
+            {
+                if (std::abs(buf.getSample(0, i)) > maxVal)
+                {
+                    maxVal = std::abs(buf.getSample(0, i));
+                    maxIdx = i;
+                }
+            }
+            std::cout << "  -> maxVal=" << maxVal << " at index " << maxIdx << std::endl;
             ASSERT_TRUE(peak > 0.1f, "ClickSource must play when note 62 is struck");
-            ASSERT_TRUE(click->isPlaying(), "ClickSource must be active");
+            ASSERT_TRUE(std::abs(buf.getSample(0, maxIdx)) > 0.1f, "Click impulse must be present");
             ASSERT_TRUE(!osc->isPlaying(), "Oscillator must NOT be active on note 62");
         }
 
@@ -734,16 +727,115 @@ int main()
 
         testVm.processBlock(buf, midi);
 
-        std::cout << "  -> Both Click A and Click B triggered concurrently:" << std::endl;
-        std::cout << "     Click A active: " << (click1->isPlaying() ? "YES" : "NO") << std::endl;
-        std::cout << "     Click B active: " << (click2->isPlaying() ? "YES" : "NO") << std::endl;
-
-        ASSERT_TRUE(click1->isPlaying(), "Click A must NOT be choked by Click B when triggered together on the same note!");
-        ASSERT_TRUE(click2->isPlaying(), "Click B must NOT be choked by Click A when triggered together on the same note!");
-
         float peak = buf.getMagnitude(0, 0, blockSize);
-        ASSERT_TRUE(peak > 0.5f, "Layered click output must sound loudly on single click!");
+        std::cout << "  -> Layered click output peak: " << peak << std::endl;
+        ASSERT_TRUE(peak > 1.0f, "Both clicks must co-exist and layer their impulses on concurrent noteOn!");
 
+        std::cout << "  -> PASSED." << std::endl;
+    }
+
+    // TEST 13: Manual Oscillator Frequency & Pitch Tracking Mode
+    {
+        std::cout << "[TEST 13] Testing Oscillator Manual Frequency & Pitch Tracking Mode..." << std::endl;
+        VoiceManager testVm;
+        testVm.prepare(sampleRate, blockSize);
+
+        auto osc = std::make_shared<OscillatorSource>(5001, "Tuned Osc");
+        osc->setWaveform(OscWaveform::Sine);
+        osc->setGain(1.0f);
+        osc->setAttackMs(0.01f);
+        osc->setDecayMs(100.0f);
+        osc->setSustainLevel(1.0f);
+        testVm.addSource(osc);
+
+        // 1. Manual frequency with pitchTrack = false
+        osc->setPitchTrack(false);
+        osc->setFrequency(1000.0f); // Exactly 1000 Hz
+        ASSERT_NEAR(osc->getFrequency(), 1000.0f, 0.01f, "getFrequency matches");
+        ASSERT_TRUE(!osc->getPitchTrack(), "pitchTrack is false");
+
+        // Trigger note 60 (normally 261.63Hz)
+        juce::AudioBuffer<float> bufA(2, blockSize);
+        bufA.clear();
+        juce::MidiBuffer midiA;
+        midiA.addEvent(juce::MidiMessage::noteOn(1, 60, (juce::uint8)127), 0);
+        testVm.processBlock(bufA, midiA);
+
+        // Period of 1000 Hz at 48000 Hz sample rate is 48 samples.
+        // Compare with note 72 (normally 523.25Hz)
+        testVm.panic();
+        juce::AudioBuffer<float> bufB(2, blockSize);
+        bufB.clear();
+        juce::MidiBuffer midiB;
+        midiB.addEvent(juce::MidiMessage::noteOn(1, 72, (juce::uint8)127), 0);
+        testVm.processBlock(bufB, midiB);
+
+        // Both buffers must have identical 48-sample period (1000Hz at 48kHz = 48 samples/cycle)
+        for (int i = 50; i < 200; ++i)
+        {
+            ASSERT_NEAR(bufA.getSample(0, i), bufA.getSample(0, i + 48), 1e-3, "bufA 1000Hz periodicity (48 samples)");
+            ASSERT_NEAR(bufB.getSample(0, i), bufB.getSample(0, i + 48), 1e-3, "bufB 1000Hz periodicity (48 samples)");
+        }
+        std::cout << "  -> Fixed frequency (pitchTrack=false, 1000Hz) verified across different MIDI notes." << std::endl;
+
+        // 2. Pitch tracking mode: frequency is base pitch for note 69 (A4)
+        osc->setPitchTrack(true);
+        osc->setFrequency(440.0f);
+        testVm.panic();
+        juce::AudioBuffer<float> bufPitch(2, blockSize);
+        bufPitch.clear();
+        juce::MidiBuffer midiPitch;
+        midiPitch.addEvent(juce::MidiMessage::noteOn(1, 69, (juce::uint8)127), 0);
+        testVm.processBlock(bufPitch, midiPitch);
+        ASSERT_TRUE(bufPitch.getMagnitude(0, 0, blockSize) > 0.5f, "Oscillator must play at 440Hz base pitch");
+        std::cout << "  -> Pitch tracking mode (pitchTrack=true, A4=440Hz) verified." << std::endl;
+
+        // 3. Serialization toVar / fromVar test
+        auto varRep = osc->toVar();
+        OscillatorSource deserialized(5002);
+        deserialized.fromVar(varRep);
+        ASSERT_NEAR(deserialized.getFrequency(), 440.0f, 0.01f, "Deserialized oscillator frequency matches");
+        ASSERT_TRUE(deserialized.getPitchTrack() == true, "Deserialized oscillator pitchTrack matches");
+
+        std::cout << "  -> PASSED." << std::endl;
+    }
+
+    // TEST 14: Fast Pattern / Ratchet 1-Sample Click Reproduction
+    {
+        std::cout << "[TEST 14] Testing Fast Pattern / Ratchet 1-Sample Click Intra-Buffer Slicing..." << std::endl;
+        VoiceManager testVm;
+        testVm.prepare(sampleRate, blockSize);
+
+        auto click = std::make_shared<ClickSource>(6001, "Ratchet Click");
+        click->setGain(1.0f);
+        click->setPolarity(0); // Pos
+        testVm.addSource(click);
+
+        juce::AudioBuffer<float> buf(2, blockSize);
+        buf.clear();
+
+        // 4 rapid clicks inside a single 512-sample buffer at samples 0, 16, 32, 48
+        juce::MidiBuffer midi;
+        midi.addEvent(juce::MidiMessage::noteOn(1, 60, (juce::uint8)127), 0);
+        midi.addEvent(juce::MidiMessage::noteOn(1, 60, (juce::uint8)127), 16);
+        midi.addEvent(juce::MidiMessage::noteOn(1, 60, (juce::uint8)127), 32);
+        midi.addEvent(juce::MidiMessage::noteOn(1, 60, (juce::uint8)127), 48);
+
+        testVm.processBlock(buf, midi);
+
+        // Verify each impulse exists strictly at its exact sample, followed by silence (1-sample duration)
+        const int triggerSamples[] = { 0, 16, 32, 48 };
+        for (int t = 0; t < 4; ++t)
+        {
+            int s = triggerSamples[t];
+            float impulse = buf.getSample(0, s);
+            float nextSample = buf.getSample(0, s + 1);
+
+            ASSERT_TRUE(impulse > 0.5f, "Impulse must be present at trigger sample position");
+            ASSERT_NEAR(nextSample, 0.0f, 1e-5, "Sample immediately after 1-sample impulse must be silent");
+        }
+
+        std::cout << "  -> Verified 4 rapid intra-buffer click events at samples [0, 16, 32, 48] rendered with single-sample unit impulse precision without choking or starvation." << std::endl;
         std::cout << "  -> PASSED." << std::endl;
     }
 

@@ -15,62 +15,12 @@ void ClickSource::prepare(double sampleRate, int /*maxBlockSize*/)
 
     for (auto& v : voices)
     {
-        v.envelope.prepare(currentSampleRate);
-        v.envelope.setAttackMs(envAttackMs.load(std::memory_order_relaxed));
-        v.envelope.setHoldMs(envHoldMs.load(std::memory_order_relaxed));
-        v.envelope.setDecayMs(envDecayMs.load(std::memory_order_relaxed));
-        v.envelope.setSustainLevel(envSustain.load(std::memory_order_relaxed));
-        v.envelope.setReleaseMs(envReleaseMs.load(std::memory_order_relaxed));
-        v.envelope.setAttackCurve(envCurve.load(std::memory_order_relaxed));
-        v.envelope.setDecayCurve(envCurve.load(std::memory_order_relaxed));
-        v.envelope.setReleaseCurve(envCurve.load(std::memory_order_relaxed));
-
         v.active = false;
-        v.sampleIndex = 0;
-        v.phase = 0.0;
+        v.samplesRemaining = 0;
+        v.amplitude = 1.0f;
         v.noteNumber = -1;
     }
-}
-
-void ClickSource::setAttackMs(float ms) noexcept
-{
-    envAttackMs.store(ms, std::memory_order_relaxed);
-    for (auto& v : voices) v.envelope.setAttackMs(ms);
-}
-
-void ClickSource::setHoldMs(float ms) noexcept
-{
-    envHoldMs.store(ms, std::memory_order_relaxed);
-    for (auto& v : voices) v.envelope.setHoldMs(ms);
-}
-
-void ClickSource::setDecayMs(float ms) noexcept
-{
-    envDecayMs.store(ms, std::memory_order_relaxed);
-    for (auto& v : voices) v.envelope.setDecayMs(ms);
-}
-
-void ClickSource::setSustainLevel(float lvl) noexcept
-{
-    envSustain.store(lvl, std::memory_order_relaxed);
-    for (auto& v : voices) v.envelope.setSustainLevel(lvl);
-}
-
-void ClickSource::setReleaseMs(float ms) noexcept
-{
-    envReleaseMs.store(ms, std::memory_order_relaxed);
-    for (auto& v : voices) v.envelope.setReleaseMs(ms);
-}
-
-void ClickSource::setCurveShape(float shape) noexcept
-{
-    envCurve.store(shape, std::memory_order_relaxed);
-    for (auto& v : voices)
-    {
-        v.envelope.setAttackCurve(shape);
-        v.envelope.setDecayCurve(shape);
-        v.envelope.setReleaseCurve(shape);
-    }
+    activityHoldCounter.store(0, std::memory_order_relaxed);
 }
 
 void ClickSource::noteOn(int noteNumber, float velocity)
@@ -88,71 +38,38 @@ void ClickSource::noteOn(int noteNumber, float velocity)
 
     if (voiceIdx == -1)
     {
-        float minLevel = 100.0f;
-        for (int i = 0; i < MAX_VOICES; ++i)
-        {
-            float lvl = voices[i].envelope.getCurrentLevel();
-            if (lvl < minLevel)
-            {
-                minLevel = lvl;
-                voiceIdx = i;
-            }
-        }
+        voiceIdx = 0;
     }
 
-    if (voiceIdx >= 0)
-    {
-        auto& v = voices[voiceIdx];
-        v.noteNumber = noteNumber;
-        v.active = true;
-        v.sampleIndex = 0;
-        v.phase = 0.0;
+    auto& v = voices[voiceIdx];
+    v.noteNumber = noteNumber;
+    v.active = true;
+    v.samplesRemaining = 1; // Pure 1-sample unit impulse
+    v.amplitude = velocity > 0.0f ? velocity : 1.0f;
 
-        float totalSemitones = static_cast<float>(noteNumber - 69) + pitchSemi.load(std::memory_order_relaxed)
-                               + (pitchFine.load(std::memory_order_relaxed) * 0.01f);
-        v.noteFreq = static_cast<float>(440.0 * std::pow(2.0, totalSemitones / 12.0));
-
-        v.envelope.setAttackMs(envAttackMs.load(std::memory_order_relaxed));
-        v.envelope.setHoldMs(envHoldMs.load(std::memory_order_relaxed));
-        v.envelope.setDecayMs(envDecayMs.load(std::memory_order_relaxed));
-        v.envelope.setSustainLevel(envSustain.load(std::memory_order_relaxed));
-        v.envelope.setReleaseMs(envReleaseMs.load(std::memory_order_relaxed));
-        v.envelope.setAttackCurve(envCurve.load(std::memory_order_relaxed));
-        v.envelope.setDecayCurve(envCurve.load(std::memory_order_relaxed));
-        v.envelope.setReleaseCurve(envCurve.load(std::memory_order_relaxed));
-
-        v.envelope.noteOn(velocity);
-    }
+    activityHoldCounter.store(2, std::memory_order_relaxed);
 }
 
 void ClickSource::noteOff(float /*velocity*/)
 {
-    // A click is a transient impulse: if sustain is 0 (default), noteOff should not choke the impulse!
-    if (envSustain.load(std::memory_order_relaxed) > 0.001f)
-    {
-        for (auto& v : voices)
-        {
-            if (v.active)
-            {
-                v.envelope.noteOff();
-            }
-        }
-    }
+    // Clicks are single-sample impulses; noteOff does not choke or modify the impulse
 }
 
 void ClickSource::choke()
 {
     for (auto& v : voices)
     {
-        if (v.active)
-        {
-            v.envelope.choke();
-        }
+        v.active = false;
+        v.samplesRemaining = 0;
     }
+    activityHoldCounter.store(0, std::memory_order_relaxed);
 }
 
 bool ClickSource::isPlaying() const noexcept
 {
+    if (activityHoldCounter.load(std::memory_order_relaxed) > 0)
+        return true;
+
     for (const auto& v : voices)
     {
         if (v.active)
@@ -161,100 +78,12 @@ bool ClickSource::isPlaying() const noexcept
     return false;
 }
 
-float ClickSource::generateClickSample(Voice& v, ClickType ct, int pw, float baseFreq, float damp, bool trackPitch, int pol) noexcept
-{
-    float raw = 0.0f;
-    float freq = trackPitch ? v.noteFreq : baseFreq;
-    if (freq < 10.0f) freq = 10.0f;
-
-    switch (ct)
-    {
-        case ClickType::Dirac:
-        {
-            if (v.sampleIndex < pw)
-            {
-                if (pol == 0) // Positive
-                    raw = 1.0f;
-                else if (pol == 1) // Negative
-                    raw = -1.0f;
-                else // Bipolar alternating
-                    raw = (v.sampleIndex % 2 == 0) ? 1.0f : -1.0f;
-            }
-            else
-            {
-                raw = 0.0f;
-            }
-            break;
-        }
-
-        case ClickType::Resonant:
-        {
-            // Damped sinusoidal pop: sin(2pi * f * t) * exp(-t / tau)
-            double t = static_cast<double>(v.sampleIndex) / currentSampleRate;
-            double tau = 0.001 + (1.0 - static_cast<double>(damp)) * 0.09;
-            double decay = std::exp(-t / tau);
-            if (decay > 1e-5)
-            {
-                double angle = t * 2.0 * juce::MathConstants<double>::pi * static_cast<double>(freq);
-                raw = static_cast<float>(std::sin(angle) * decay);
-                if (pol == 1) raw = -raw;
-            }
-            break;
-        }
-
-        case ClickType::Chirp:
-        {
-            // Exponential frequency drop from 4*freq to freq over 8ms
-            double t = static_cast<double>(v.sampleIndex) / currentSampleRate;
-            double chirpDuration = 0.008 * (1.0 + (1.0 - static_cast<double>(damp)));
-            double decay = std::exp(-t / (chirpDuration * 0.8));
-            if (decay > 1e-5)
-            {
-                double sweepRate = std::exp(-t / (chirpDuration * 0.25));
-                double curFreq = static_cast<double>(freq) * (1.0 + 3.0 * sweepRate);
-                v.phase += curFreq / currentSampleRate;
-                if (v.phase >= 1.0) v.phase -= std::floor(v.phase);
-
-                raw = static_cast<float>(std::sin(v.phase * 2.0 * juce::MathConstants<double>::pi) * decay);
-                if (pol == 1) raw = -raw;
-            }
-            break;
-        }
-
-        case ClickType::BitFlip:
-        {
-            if (v.sampleIndex < pw * 4)
-            {
-                uint32_t seed = static_cast<uint32_t>(v.sampleIndex * 1664525u + 1013904223u);
-                seed ^= seed << 13;
-                seed ^= seed >> 17;
-                seed ^= seed << 5;
-                raw = (seed & 1) ? 1.0f : -1.0f;
-            }
-            else
-            {
-                raw = 0.0f;
-            }
-            break;
-        }
-    }
-
-    v.sampleIndex++;
-    return raw;
-}
-
 void ClickSource::processBlock(juce::AudioBuffer<float>& buffer, int startSample, int numSamples, double hostBpm, double /*hostPpq*/)
 {
     if (getMuted())
         return;
 
-    auto ct = getClickType();
-    int pw = getPulseWidthSamples();
-    float baseFreq = getClickFrequency();
-    float damp = getClickDamping();
-    bool pt = getPitchTrack();
     int pol = getPolarity();
-
     float currentGain = getGain();
     float currentPan = getPan();
 
@@ -272,14 +101,21 @@ void ClickSource::processBlock(juce::AudioBuffer<float>& buffer, int startSample
         {
             if (v.active)
             {
-                float env = v.envelope.getNextSample();
-                if (!v.envelope.isActive())
+                if (v.samplesRemaining > 0)
+                {
+                    float impulse = v.amplitude;
+                    if (pol == 1) // Negative
+                        impulse = -impulse;
+                    else if (pol == 2) // Bipolar alternating
+                        impulse = (v.noteNumber % 2 == 0) ? impulse : -impulse;
+
+                    sampleSum += impulse;
+                    v.samplesRemaining--;
+                }
+
+                if (v.samplesRemaining <= 0)
                 {
                     v.active = false;
-                }
-                else
-                {
-                    sampleSum += generateClickSample(v, ct, pw, baseFreq, damp, pt, pol) * env;
                 }
             }
         }
@@ -296,6 +132,10 @@ void ClickSource::processBlock(juce::AudioBuffer<float>& buffer, int startSample
                 rightOut[s] += sR;
         }
     }
+
+    int hold = activityHoldCounter.load(std::memory_order_relaxed);
+    if (hold > 0)
+        activityHoldCounter.store(hold - 1, std::memory_order_relaxed);
 }
 
 std::shared_ptr<SoundSource> ClickSource::clone(int newId) const

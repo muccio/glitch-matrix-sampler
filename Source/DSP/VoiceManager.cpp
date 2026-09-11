@@ -251,11 +251,9 @@ void VoiceManager::processBlock(juce::AudioBuffer<float>& buffer,
         }
     }
 
-    // Process incoming MIDI events
-    for (const auto metadata : midiMessages)
+    // Helper lambda to dispatch a single MIDI message across the source graph
+    auto dispatchMidiMessage = [graph](const juce::MidiMessage& msg)
     {
-        auto msg = metadata.getMessage();
-
         if (msg.isNoteOn())
         {
             int note = msg.getNoteNumber();
@@ -323,7 +321,7 @@ void VoiceManager::processBlock(juce::AudioBuffer<float>& buffer,
                             for (int otherIdx : graph->chokeGroupIndices[cg])
                             {
                                 // Do NOT choke sibling sources that are being triggered concurrently by the same MIDI event
-                                    if (otherIdx < static_cast<int>(isTriggeredThisNote.size()) && !isTriggeredThisNote[otherIdx])
+                                if (otherIdx < static_cast<int>(isTriggeredThisNote.size()) && !isTriggeredThisNote[otherIdx])
                                 {
                                     if (otherIdx < static_cast<int>(graph->sources.size()) && graph->sources[otherIdx])
                                         graph->sources[otherIdx]->choke();
@@ -368,7 +366,7 @@ void VoiceManager::processBlock(juce::AudioBuffer<float>& buffer,
                 if (s) s->choke();
             }
         }
-    }
+    };
 
     // Check solo status
     bool anySoloed = false;
@@ -381,17 +379,73 @@ void VoiceManager::processBlock(juce::AudioBuffer<float>& buffer,
         }
     }
 
-    // Render audio from sources
+    // Sample-accurate rendering: split block into sub-blocks by MIDI event timestamps
+    if (midiMessages.isEmpty())
+    {
+        for (auto& s : graph->sources)
+        {
+            if (!s) continue;
+            if (anySoloed && !s->getSoloed()) continue;
+            s->processBlock(buffer, 0, numSamples, hostBpm, hostPpq);
+        }
+    }
+    else
+    {
+        int curSample = 0;
+        auto midiIt = midiMessages.cbegin();
+        auto midiEnd = midiMessages.cend();
+
+        while (curSample < numSamples)
+        {
+            // Dispatch all MIDI events that occur at or before curSample
+            while (midiIt != midiEnd && (*midiIt).samplePosition <= curSample)
+            {
+                dispatchMidiMessage((*midiIt).getMessage());
+                ++midiIt;
+            }
+
+            // Find next MIDI event timestamp (clamped to buffer bounds)
+            int nextMidiSample = numSamples;
+            if (midiIt != midiEnd)
+            {
+                nextMidiSample = std::clamp((*midiIt).samplePosition, curSample, numSamples);
+            }
+
+            int samplesToRender = nextMidiSample - curSample;
+            if (samplesToRender > 0)
+            {
+                for (auto& s : graph->sources)
+                {
+                    if (!s) continue;
+                    if (anySoloed && !s->getSoloed()) continue;
+                    s->processBlock(buffer, curSample, samplesToRender, hostBpm, hostPpq);
+                }
+                curSample = nextMidiSample;
+            }
+            else if (midiIt != midiEnd && (*midiIt).samplePosition <= curSample)
+            {
+                // Continue loop to dispatch another event at the same sample
+            }
+            else
+            {
+                curSample = nextMidiSample;
+            }
+        }
+
+        // Dispatch any trailing MIDI messages with timestamp >= numSamples
+        while (midiIt != midiEnd)
+        {
+            dispatchMidiMessage((*midiIt).getMessage());
+            ++midiIt;
+        }
+    }
+
+    // Telemetry voice counting
     int playingCount = 0;
     for (auto& s : graph->sources)
     {
-        if (!s) continue;
-        if (anySoloed && !s->getSoloed()) continue;
-
-        if (s->isPlaying())
+        if (s && s->isPlaying())
             playingCount++;
-
-        s->processBlock(buffer, 0, numSamples, hostBpm, hostPpq);
     }
 
     // Apply master volume

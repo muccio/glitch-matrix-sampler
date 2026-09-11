@@ -59,6 +59,8 @@ export interface SoundSourceData {
   waveform?: number;
   pulseWidth?: number;
   glitchMorph?: number;
+  frequency?: number;
+  pitchTrack?: boolean;
 
   // Noise-specific
   noiseType?: number;

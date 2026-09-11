@@ -12,8 +12,6 @@ interface SourceInspectorProps {
 
 const OSC_WAVEFORMS = ['Sine', 'Square', 'Saw', 'Triangle', 'Glitch Wavetable'];
 const NOISE_TYPES = ['White', 'Pink', 'Crackle', 'Bit-Flip Hash'];
-const CLICK_MODELS = ['Dirac Needle', 'Resonant Pop', 'Micro Chirp', 'Bit-Flip'];
-const POLARITY_OPTIONS = ['+ Pos', '- Neg', '± Bipolar'];
 
 export const SourceInspector: React.FC<SourceInspectorProps> = ({ source, onUpdate }) => {
   if (!source) {
@@ -172,6 +170,70 @@ export const SourceInspector: React.FC<SourceInspectorProps> = ({ source, onUpda
               />
             </div>
           </div>
+
+          {/* Frequency & Pitch Track Controls */}
+          <div className="grid grid-cols-2 gap-3 text-xs pt-1">
+            <div className="bg-glitch-dark/70 p-2.5 rounded border border-glitch-border flex flex-col gap-1.5">
+              <div className="flex justify-between text-[10px] items-center">
+                <span className="text-glitch-dim">NOTE FREQUENCY (Hz):</span>
+                <div className="flex items-center gap-1">
+                  <input
+                    type="number"
+                    min="10"
+                    max="20000"
+                    step="0.1"
+                    value={source.frequency !== undefined ? source.frequency : 440}
+                    onChange={(e) => onUpdate('frequency', parseFloat(e.target.value) || 440)}
+                    className="w-16 bg-glitch-dark text-glitch-cyan font-bold text-right px-1 py-0.5 rounded border border-glitch-border outline-none focus:border-glitch-cyan text-[11px]"
+                  />
+                  <span className="text-glitch-cyan font-bold text-[10px]">Hz</span>
+                </div>
+              </div>
+              <input
+                type="range"
+                min="20"
+                max="5000"
+                step="1"
+                value={source.frequency !== undefined ? source.frequency : 440}
+                onChange={(e) => onUpdate('frequency', parseFloat(e.target.value))}
+                className="w-full h-1 accent-glitch-cyan cursor-pointer"
+              />
+              <div className="flex justify-between text-[9px] text-glitch-dim">
+                <span>Sub 30Hz</span>
+                <span>Bass 120Hz</span>
+                <span>A4 440Hz</span>
+                <span>Lead 2kHz</span>
+              </div>
+            </div>
+
+            <div className="bg-glitch-dark/70 p-2.5 rounded border border-glitch-border flex flex-col justify-between">
+              <div className="flex justify-between items-center text-[10px]">
+                <span className="text-glitch-dim">KEY TRACKING MODE:</span>
+                <span className={`font-bold text-[9px] px-1.5 py-0.5 rounded border ${
+                  source.pitchTrack !== false
+                    ? 'border-glitch-cyan text-glitch-cyan bg-glitch-cyan/10'
+                    : 'border-glitch-amber text-glitch-amber bg-glitch-amber/10'
+                }`}>
+                  {source.pitchTrack !== false ? 'TRACKING (A4=REF)' : 'FIXED FREQUENCY'}
+                </span>
+              </div>
+              <p className="text-[10px] text-glitch-dim leading-tight">
+                {source.pitchTrack !== false
+                  ? 'Tracks MIDI notes with base frequency as reference tuning.'
+                  : 'Generates exact manual frequency regardless of MIDI note.'}
+              </p>
+              <button
+                onClick={() => onUpdate('pitchTrack', source.pitchTrack === false ? true : false)}
+                className={`py-1 px-2 rounded text-[10px] font-bold border transition-all ${
+                  source.pitchTrack !== false
+                    ? 'bg-glitch-surface text-glitch-cyan border-glitch-cyan/60 hover:bg-glitch-panel'
+                    : 'bg-glitch-amber text-glitch-dark border-glitch-amber shadow-neon-amber'
+                }`}
+              >
+                {source.pitchTrack !== false ? 'ENABLE MANUAL FIXED FREQ' : 'MANUAL FREQ ACTIVE (FIXED)'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -256,144 +318,70 @@ export const SourceInspector: React.FC<SourceInspectorProps> = ({ source, onUpda
 
       {/* CLICK TRANSIENT SYNTHESIZER PANEL */}
       {source.type === 'Click' && (
-        <div className="bg-glitch-panel/40 border border-glitch-border rounded p-3 flex flex-col gap-2.5">
+        <div className="bg-glitch-panel/40 border border-emerald-500/40 rounded p-3 flex flex-col gap-2.5 shadow-sm">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold text-emerald-400 tracking-wider flex items-center gap-1.5">
               <Zap className="w-3.5 h-3.5" />
-              MICRO-CLICK TRANSIENT SYNTHESIZER
+              1-SAMPLE UNIT IMPULSE GENERATOR (DIRAC DELTA)
             </span>
-            <span className="text-[10px] text-glitch-dim">SUB-MILLISECOND PRECISION</span>
+            <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
+              FAST-PATTERN OPTIMIZED
+            </span>
           </div>
 
-          {/* Click Model selection tabs */}
-          <div className="grid grid-cols-4 gap-1.5">
-            {CLICK_MODELS.map((name, idx) => (
-              <button
-                key={idx}
-                onClick={() => onUpdate('clickType', idx)}
-                className={`py-1.5 px-2 rounded text-[11px] font-bold border transition-all ${
-                  (source.clickType ?? 0) === idx
-                    ? 'bg-emerald-500 text-glitch-dark border-emerald-500 shadow-neon-green'
-                    : 'bg-glitch-surface text-glitch-dim border-glitch-border hover:text-glitch-text'
-                }`}
-              >
-                {name.toUpperCase()}
-              </button>
-            ))}
-          </div>
-
-          {/* Model-specific controls */}
-          <div className="grid grid-cols-3 gap-3 text-xs pt-1">
-            {/* Pulse Width (for Dirac & BitFlip) */}
-            <div className="bg-glitch-dark/70 p-2 rounded border border-glitch-border flex flex-col gap-1">
-              <div className="flex justify-between text-[10px]">
-                <span className="text-glitch-dim">PULSE WIDTH:</span>
-                <span className="text-emerald-400 font-bold">
-                  {source.clickWidthSamples ?? 4} smp
+          <div className="bg-glitch-dark/70 p-3 rounded border border-glitch-border flex flex-col gap-2.5">
+            <div className="flex items-center justify-between">
+              <div className="flex flex-col">
+                <span className="text-[11px] font-bold text-glitch-text">IMPULSE POLARITY</span>
+                <span className="text-[9px] text-glitch-dim">
+                  Unit pulse direction: +1.0 (Positive needle) or -1.0 (Negative needle)
                 </span>
               </div>
-              <input
-                type="range"
-                min="1"
-                max="64"
-                step="1"
-                value={source.clickWidthSamples ?? 4}
-                onChange={(e) => onUpdate('clickWidthSamples', parseInt(e.target.value, 10))}
-                className="w-full h-1 accent-emerald-400 cursor-pointer"
-              />
-            </div>
-
-            {/* Resonance Frequency (for Resonant & Chirp) */}
-            <div className="bg-glitch-dark/70 p-2 rounded border border-glitch-border flex flex-col gap-1">
-              <div className="flex justify-between text-[10px]">
-                <span className="text-glitch-dim">FREQ / TONE:</span>
-                <span className="text-emerald-400 font-bold">
-                  {Math.round(source.clickFrequency ?? 1200)} Hz
-                </span>
-              </div>
-              <input
-                type="range"
-                min="50"
-                max="16000"
-                step="10"
-                value={source.clickFrequency ?? 1200}
-                onChange={(e) => onUpdate('clickFrequency', parseFloat(e.target.value))}
-                className="w-full h-1 accent-emerald-400 cursor-pointer"
-              />
-            </div>
-
-            {/* Damping / Snap */}
-            <div className="bg-glitch-dark/70 p-2 rounded border border-glitch-border flex flex-col gap-1">
-              <div className="flex justify-between text-[10px]">
-                <span className="text-glitch-dim">DAMPING / SNAP:</span>
-                <span className="text-emerald-400 font-bold">
-                  {((source.clickDamping ?? 0.65) * 100).toFixed(0)}%
-                </span>
-              </div>
-              <input
-                type="range"
-                min="0.05"
-                max="0.99"
-                step="0.01"
-                value={source.clickDamping ?? 0.65}
-                onChange={(e) => onUpdate('clickDamping', parseFloat(e.target.value))}
-                className="w-full h-1 accent-emerald-400 cursor-pointer"
-              />
-            </div>
-          </div>
-
-          {/* Polarity and MIDI Pitch Track row */}
-          <div className="grid grid-cols-2 gap-3 text-xs pt-1">
-            {/* Polarity selector */}
-            <div className="bg-glitch-dark/70 p-2 rounded border border-glitch-border flex items-center justify-between px-2 py-1.5">
-              <span className="text-[10px] text-glitch-dim">IMPULSE POLARITY:</span>
-              <div className="flex gap-1">
-                {POLARITY_OPTIONS.map((pol, idx) => (
+              <div className="flex gap-1.5">
+                {[
+                  { label: '+ POSITIVE (+1.0)', val: 0 },
+                  { label: '- NEGATIVE (-1.0)', val: 1 },
+                  { label: '± BIPOLAR', val: 2 }
+                ].map((item) => (
                   <button
-                    key={idx}
-                    onClick={() => onUpdate('clickPolarity', idx)}
-                    className={`py-0.5 px-2 rounded text-[10px] font-bold border transition-all ${
-                      (source.clickPolarity ?? 0) === idx
-                        ? 'bg-emerald-500 text-glitch-dark border-emerald-500'
+                    key={item.val}
+                    onClick={() => onUpdate('clickPolarity', item.val)}
+                    className={`py-1 px-3 rounded text-[10px] font-bold border transition-all ${
+                      (source.clickPolarity ?? 0) === item.val
+                        ? 'bg-emerald-500 text-glitch-dark border-emerald-500 shadow-neon-green'
                         : 'bg-glitch-surface text-glitch-dim border-glitch-border hover:text-glitch-text'
                     }`}
                   >
-                    {pol}
+                    {item.label}
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* MIDI Pitch Track toggle */}
-            <div className="bg-glitch-dark/70 p-2 rounded border border-glitch-border flex items-center justify-between px-2 py-1.5">
-              <span className="text-[10px] text-glitch-dim">MIDI KEY TRACKING:</span>
-              <button
-                onClick={() => onUpdate('clickPitchTrack', !source.clickPitchTrack)}
-                className={`py-0.5 px-3 rounded text-[10px] font-bold border transition-all ${
-                  source.clickPitchTrack
-                    ? 'bg-emerald-500 text-glitch-dark border-emerald-500 shadow-neon-green'
-                    : 'bg-glitch-surface text-glitch-dim border-glitch-border hover:text-glitch-text'
-                }`}
-              >
-                {source.clickPitchTrack ? 'ENABLED (TUNED)' : 'FIXED FREQ'}
-              </button>
+            <div className="p-2 rounded bg-emerald-950/20 border border-emerald-800/30 text-[10px] text-emerald-300/80 flex items-center gap-2">
+              <span className="font-mono text-emerald-400 font-bold">δ[n]=1.0</span>
+              <span>
+                Pure 1-sample unit impulse. Free of envelope decay latency or voice stealing delays; renders sample-accurately on ultra-fast patterns, ratchet rolls, and micro-glitches.
+              </span>
             </div>
           </div>
         </div>
       )}
 
-      {/* AHDSR Fast Envelope Section */}
-      <EnvelopeEditor
-        envelope={{
-          attackMs: source.attackMs,
-          holdMs: source.holdMs,
-          decayMs: source.decayMs,
-          sustain: source.sustain,
-          releaseMs: source.releaseMs,
-          curve: source.curve
-        }}
-        onChange={onUpdate}
-      />
+      {/* AHDSR Fast Envelope Section (Only for non-Click sources) */}
+      {source.type !== 'Click' && (
+        <EnvelopeEditor
+          envelope={{
+            attackMs: source.attackMs,
+            holdMs: source.holdMs,
+            decayMs: source.decayMs,
+            sustain: source.sustain,
+            releaseMs: source.releaseMs,
+            curve: source.curve
+          }}
+          onChange={onUpdate}
+        />
+      )}
 
       {/* Glitch Multi-FX Section */}
       <GlitchFXPanel

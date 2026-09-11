@@ -18,7 +18,7 @@ enum class ClickType
 class ClickSource : public SoundSource
 {
 public:
-    static constexpr int MAX_VOICES = 8;
+    static constexpr int MAX_VOICES = 32;
 
     ClickSource(int id, const std::string& sourceName = "Click");
     ~ClickSource() override = default;
@@ -53,13 +53,13 @@ public:
     int getPolarity() const noexcept { return polarity.load(std::memory_order_relaxed); }
     void setPolarity(int p) noexcept { polarity.store(std::clamp(p, 0, 2), std::memory_order_relaxed); }
 
-    // Fast Envelope access
-    void setAttackMs(float ms) noexcept;
-    void setHoldMs(float ms) noexcept;
-    void setDecayMs(float ms) noexcept;
-    void setSustainLevel(float lvl) noexcept;
-    void setReleaseMs(float ms) noexcept;
-    void setCurveShape(float shape) noexcept;
+    // Fast Envelope access (retained for backward compatibility)
+    void setAttackMs(float ms) noexcept { envAttackMs.store(ms, std::memory_order_relaxed); }
+    void setHoldMs(float ms) noexcept { envHoldMs.store(ms, std::memory_order_relaxed); }
+    void setDecayMs(float ms) noexcept { envDecayMs.store(ms, std::memory_order_relaxed); }
+    void setSustainLevel(float lvl) noexcept { envSustain.store(lvl, std::memory_order_relaxed); }
+    void setReleaseMs(float ms) noexcept { envReleaseMs.store(ms, std::memory_order_relaxed); }
+    void setCurveShape(float shape) noexcept { envCurve.store(shape, std::memory_order_relaxed); }
 
     float getAttackMs() const noexcept { return envAttackMs.load(std::memory_order_relaxed); }
     float getHoldMs() const noexcept { return envHoldMs.load(std::memory_order_relaxed); }
@@ -77,32 +77,29 @@ private:
     {
         int noteNumber = -1;
         bool active = false;
-        FastEnvelope envelope;
-        int sampleIndex = 0;
-        double phase = 0.0;
-        float noteFreq = 1000.0f;
+        int samplesRemaining = 0; // Pure 1-sample unit impulse
+        float amplitude = 1.0f;
     };
 
     double currentSampleRate = 44100.0;
     std::array<Voice, MAX_VOICES> voices;
+    std::atomic<int> activityHoldCounter { 0 };
     GlitchFX glitchFx;
 
     std::atomic<int> clickType { static_cast<int>(ClickType::Dirac) };
-    std::atomic<int> pulseWidthSamples { 4 };        // 4 samples needle
-    std::atomic<float> clickFrequency { 1200.0f };   // 1.2 kHz resonant pop default
-    std::atomic<float> clickDamping { 0.65f };       // Snappy damping
-    std::atomic<bool> pitchTrack { false };          // Default fixed pitch for percussive clicks
-    std::atomic<int> polarity { 0 };                 // 0 = Positive (+1), 1 = Negative (-1), 2 = Bipolar (+1/-1)
+    std::atomic<int> pulseWidthSamples { 1 };        // Unit impulse: 1 sample
+    std::atomic<float> clickFrequency { 1200.0f };
+    std::atomic<float> clickDamping { 0.65f };
+    std::atomic<bool> pitchTrack { false };
+    std::atomic<int> polarity { 0 };                 // 0 = Positive (+1), 1 = Negative (-1), 2 = Bipolar alternating
 
-    // Envelope parameters (default ultra-snappy for clicks)
-    std::atomic<float> envAttackMs { 0.05f };
+    // Envelope parameters (retained for backward compatibility)
+    std::atomic<float> envAttackMs { 0.0f };
     std::atomic<float> envHoldMs { 0.0f };
-    std::atomic<float> envDecayMs { 30.0f };
+    std::atomic<float> envDecayMs { 0.0f };
     std::atomic<float> envSustain { 0.0f };
-    std::atomic<float> envReleaseMs { 15.0f };
-    std::atomic<float> envCurve { -0.6f };
-
-    float generateClickSample(Voice& v, ClickType ct, int pw, float baseFreq, float damp, bool trackPitch, int pol) noexcept;
+    std::atomic<float> envReleaseMs { 0.0f };
+    std::atomic<float> envCurve { 0.0f };
 };
 
 } // namespace GlitchDSP

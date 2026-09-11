@@ -103,7 +103,9 @@ class NativeBridgeService {
         stutterDivision: 2,
         waveform: 0,
         pulseWidth: 0.5,
-        glitchMorph: 0.2
+        glitchMorph: 0.2,
+        frequency: 440,
+        pitchTrack: true
       }
     ]
   };
@@ -248,7 +250,7 @@ class NativeBridgeService {
           stutterMix: 0.0,
           stutterSync: false,
           stutterDivision: 2,
-          ...(type === 'Oscillator' ? { waveform: 0, pulseWidth: 0.5, glitchMorph: 0.0 } : {}),
+          ...(type === 'Oscillator' ? { waveform: 0, pulseWidth: 0.5, glitchMorph: 0.0, frequency: 440, pitchTrack: true } : {}),
           ...(type === 'Noise' ? { noiseType: 2, crackleDensity: 500, hashRate: 4400 } : {}),
           ...(type === 'Sample' ? {
             filePath: "untitled_click.wav",
@@ -263,14 +265,14 @@ class NativeBridgeService {
           } : {}),
           ...(type === 'Click' ? {
             name: `Click ${newId}`,
-            attackMs: 0.05,
+            attackMs: 0.0,
             holdMs: 0.0,
-            decayMs: 25.0,
+            decayMs: 0.0,
             sustain: 0.0,
-            releaseMs: 10.0,
-            curve: -0.7,
+            releaseMs: 0.0,
+            curve: 0.0,
             clickType: 0,
-            clickWidthSamples: 4,
+            clickWidthSamples: 1,
             clickFrequency: 1200,
             clickDamping: 0.65,
             clickPitchTrack: false,
