@@ -1023,6 +1023,52 @@ int main()
         std::cout << "  -> PASSED." << std::endl;
     }
 
+    // TEST 17: Random Glitch Set Generator & Audio Processing Safety
+    {
+        std::cout << "[TEST 17] Testing StateSerializer::generateRandomGlitchSet..." << std::endl;
+
+        for (int run = 0; run < 10; ++run)
+        {
+            StateSerializer::generateRandomGlitchSet(vm, &formatManager);
+            auto sources = vm.getSourcesCopy();
+
+            ASSERT_TRUE(sources.size() >= 3 && sources.size() <= 5, "Random glitch set must produce 3-5 sources");
+
+            for (const auto& src : sources)
+            {
+                ASSERT_TRUE(src != nullptr, "Source must not be null");
+                ASSERT_TRUE(src->getId() > 0, "Source ID must be > 0");
+                ASSERT_TRUE(src->getGain() >= 0.5f && src->getGain() <= 1.0f, "Gain should be in a safe range");
+                ASSERT_TRUE(src->getPan() >= -1.0f && src->getPan() <= 1.0f, "Pan must be in [-1, 1]");
+            }
+
+            // Test audio processing across multiple blocks with MIDI notes
+            juce::AudioBuffer<float> buffer(2, blockSize);
+            buffer.clear();
+            juce::MidiBuffer midi;
+            midi.addEvent(juce::MidiMessage::noteOn(1, 60, 0.9f), 0);
+            midi.addEvent(juce::MidiMessage::noteOn(1, 62, 0.8f), 32);
+            midi.addEvent(juce::MidiMessage::noteOn(1, 64, 0.7f), 64);
+            midi.addEvent(juce::MidiMessage::noteOff(1, 60), 200);
+
+            vm.processBlock(buffer, midi);
+            vm.collectGarbage();
+
+            // Verify no NaN or Inf
+            for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+            {
+                const float* samples = buffer.getReadPointer(ch);
+                for (int s = 0; s < buffer.getNumSamples(); ++s)
+                {
+                    ASSERT_TRUE(!std::isnan(samples[s]), "Audio output must not contain NaN");
+                    ASSERT_TRUE(!std::isinf(samples[s]), "Audio output must not contain Inf");
+                }
+            }
+        }
+
+        std::cout << "  -> PASSED 10 successive randomized glitch sets with audio render validation." << std::endl;
+    }
+
     std::cout << "=================================================" << std::endl;
     std::cout << "  ALL DSP & THREAD-SAFETY TESTS PASSED (100%)    " << std::endl;
     std::cout << "=================================================" << std::endl;

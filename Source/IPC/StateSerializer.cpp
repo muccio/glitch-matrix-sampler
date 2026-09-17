@@ -389,4 +389,194 @@ void StateSerializer::loadFactoryPreset(int presetIndex, VoiceManager& voiceMana
     }
 }
 
+void StateSerializer::generateRandomGlitchSet(VoiceManager& voiceManager, juce::AudioFormatManager* /*formatManager*/)
+{
+    voiceManager.clearAllSources();
+
+    juce::Random rng;
+    voiceManager.setMasterVolume(0.85f + rng.nextFloat() * 0.1f);
+
+    // Archetypes: 0: Clicks & Cuts Kit, 1: Digital Entropy, 2: Stutter Machine, 3: Micro-Needle Array
+    int archetype = rng.nextInt(4);
+
+    int numSources = 3 + rng.nextInt(3); // 3 to 5 sources
+    bool isKitMapping = (rng.nextFloat() < 0.6f); // 60% chance to map across keys 60, 62, 64, 65, 67
+    const int kitNotes[] = { 60, 62, 64, 65, 67, 69, 71, 72 };
+
+    for (int i = 0; i < numSources; ++i)
+    {
+        int id = i + 1;
+        int assignedNote = isKitMapping ? kitNotes[i % 8] : -1;
+        float pan = -0.7f + (1.4f / juce::jmax(1, numSources - 1)) * i + (rng.nextFloat() - 0.5f) * 0.2f;
+        pan = juce::jlimit(-1.0f, 1.0f, pan);
+        int chokeGroup = (archetype == 0 || archetype == 3) ? (1 + (i % 2)) : (rng.nextBool() ? 1 : 0);
+
+        std::shared_ptr<SoundSource> src = nullptr;
+
+        int typeChoice;
+        if (archetype == 0) // Clicks & Cuts Kit
+        {
+            typeChoice = (i == 0) ? 3 : ((i == 1) ? 3 : ((i == 2) ? 1 : rng.nextInt(3)));
+        }
+        else if (archetype == 1) // Digital Entropy
+        {
+            typeChoice = (i == 0) ? 1 : ((i == 1) ? 0 : ((i == 2) ? 3 : rng.nextInt(3)));
+        }
+        else if (archetype == 2) // Stutter Machine
+        {
+            typeChoice = (i == 0) ? 0 : ((i == 1) ? 3 : ((i == 2) ? 1 : 0));
+        }
+        else // Micro-Transient Needle Array
+        {
+            typeChoice = (i % 2 == 0) ? 3 : ((i == 1) ? 1 : 0);
+        }
+
+        // typeChoice: 0 = Oscillator, 1 = Noise, 3 = Click
+        if (typeChoice == 3)
+        {
+            int clickModelIdx = rng.nextInt(4);
+            ClickType clickType = static_cast<ClickType>(clickModelIdx);
+            std::string name;
+            switch (clickType)
+            {
+                case ClickType::Dirac:    name = "Dirac " + std::to_string(id); break;
+                case ClickType::Resonant: name = "ResoPop " + std::to_string(id); break;
+                case ClickType::Chirp:    name = "Chirp " + std::to_string(id); break;
+                case ClickType::BitFlip:  name = "BitPulse " + std::to_string(id); break;
+            }
+
+            auto click = std::make_shared<ClickSource>(id, name);
+            click->setClickType(clickType);
+            click->setPulseWidthSamples(1 + rng.nextInt(4));
+            click->setClickFrequency(400.0f + rng.nextFloat() * 3200.0f);
+            click->setClickDamping(0.4f + rng.nextFloat() * 0.45f);
+            click->setPolarity(rng.nextInt(2));
+            click->setPitchTrack(rng.nextBool());
+
+            click->setGain(0.7f + rng.nextFloat() * 0.15f);
+            click->setPan(pan);
+            click->setAssignedNote(assignedNote);
+            click->setChokeGroup(chokeGroup);
+
+            click->setAttackMs(0.01f + rng.nextFloat() * 0.5f);
+            click->setDecayMs(10.0f + rng.nextFloat() * 50.0f);
+            click->setSustainLevel(0.0f);
+            click->setReleaseMs(5.0f + rng.nextFloat() * 20.0f);
+            click->setCurveShape(-0.8f + rng.nextFloat() * 0.3f);
+
+            if (rng.nextFloat() < 0.4f)
+            {
+                click->getGlitchFX().setBitDepth(static_cast<float>(3 + rng.nextInt(6)));
+                click->getGlitchFX().setBitcrushMix(0.4f + rng.nextFloat() * 0.5f);
+            }
+            if (rng.nextFloat() < 0.3f)
+            {
+                click->getGlitchFX().setDownsampleHz(800.0f + rng.nextFloat() * 6000.0f);
+                click->getGlitchFX().setDownsampleMix(0.5f + rng.nextFloat() * 0.4f);
+            }
+            src = click;
+        }
+        else if (typeChoice == 1)
+        {
+            int noiseModelIdx = rng.nextInt(4);
+            NoiseType noiseType = static_cast<NoiseType>(noiseModelIdx);
+            std::string name;
+            switch (noiseType)
+            {
+                case NoiseType::White:       name = "WhiteBurst " + std::to_string(id); break;
+                case NoiseType::Pink:        name = "PinkCrackle " + std::to_string(id); break;
+                case NoiseType::Crackle:     name = "Poisson " + std::to_string(id); break;
+                case NoiseType::BitFlipHash: name = "HashNoise " + std::to_string(id); break;
+            }
+
+            auto noise = std::make_shared<NoiseSource>(id, name);
+            noise->setNoiseType(noiseType);
+            noise->setCrackleDensity(200.0f + rng.nextFloat() * 2400.0f);
+            noise->setHashRate(800.0f + rng.nextFloat() * 8000.0f);
+
+            noise->setGain(0.65f + rng.nextFloat() * 0.15f);
+            noise->setPan(pan);
+            noise->setAssignedNote(assignedNote);
+            noise->setChokeGroup(chokeGroup);
+
+            noise->setAttackMs(0.05f + rng.nextFloat() * 1.5f);
+            noise->setDecayMs(20.0f + rng.nextFloat() * 160.0f);
+            noise->setSustainLevel(0.0f);
+            noise->setReleaseMs(10.0f + rng.nextFloat() * 40.0f);
+            noise->setCurveShape(-0.7f + rng.nextFloat() * 0.3f);
+
+            if (rng.nextFloat() < 0.5f)
+            {
+                noise->getGlitchFX().setDownsampleHz(600.0f + rng.nextFloat() * 4000.0f);
+                noise->getGlitchFX().setDownsampleMix(0.6f + rng.nextFloat() * 0.35f);
+            }
+            if (rng.nextFloat() < 0.35f)
+            {
+                noise->getGlitchFX().setBitDepth(static_cast<float>(2 + rng.nextInt(6)));
+                noise->getGlitchFX().setBitcrushMix(0.5f + rng.nextFloat() * 0.45f);
+            }
+            src = noise;
+        }
+        else
+        {
+            int waveIdx = rng.nextInt(5);
+            OscWaveform waveform = static_cast<OscWaveform>(waveIdx);
+            std::string name;
+            switch (waveform)
+            {
+                case OscWaveform::Sine:            name = "GlitchSine " + std::to_string(id); break;
+                case OscWaveform::Square:          name = "SquareHit " + std::to_string(id); break;
+                case OscWaveform::Saw:             name = "SawTooth " + std::to_string(id); break;
+                case OscWaveform::Triangle:        name = "SubTriangle " + std::to_string(id); break;
+                case OscWaveform::GlitchWavetable: name = "FoldWave " + std::to_string(id); break;
+            }
+
+            auto osc = std::make_shared<OscillatorSource>(id, name);
+            osc->setWaveform(waveform);
+            osc->setPulseWidth(0.2f + rng.nextFloat() * 0.6f);
+            osc->setGlitchMorph(0.1f + rng.nextFloat() * 0.8f);
+
+            const int semis[] = { -24, -12, 0, 7, 12, 19, 24 };
+            osc->setPitchSemi(static_cast<float>(semis[rng.nextInt(7)]));
+            osc->setPitchFine((rng.nextFloat() - 0.5f) * 20.0f);
+
+            osc->setGain(0.7f + rng.nextFloat() * 0.15f);
+            osc->setPan(pan);
+            osc->setAssignedNote(assignedNote);
+            osc->setChokeGroup(chokeGroup);
+
+            osc->setAttackMs(0.1f + rng.nextFloat() * 2.0f);
+            osc->setDecayMs(35.0f + rng.nextFloat() * 300.0f);
+            osc->setSustainLevel(rng.nextFloat() < 0.25f ? 0.3f : 0.0f);
+            osc->setReleaseMs(15.0f + rng.nextFloat() * 60.0f);
+            osc->setCurveShape(-0.6f + rng.nextFloat() * 0.3f);
+
+            if (rng.nextFloat() < 0.6f)
+            {
+                osc->getGlitchFX().setStutterHz(6.0f + rng.nextFloat() * 32.0f);
+                osc->getGlitchFX().setStutterDuty(0.35f + rng.nextFloat() * 0.35f);
+                osc->getGlitchFX().setStutterMix(0.5f + rng.nextFloat() * 0.45f);
+                const int divs[] = { 1, 2, 4, 8 };
+                osc->getGlitchFX().setStutterDivision(divs[rng.nextInt(4)]);
+            }
+            if (rng.nextFloat() < 0.45f)
+            {
+                osc->getGlitchFX().setBitDepth(static_cast<float>(3 + rng.nextInt(6)));
+                osc->getGlitchFX().setBitcrushMix(0.4f + rng.nextFloat() * 0.5f);
+            }
+            if (rng.nextFloat() < 0.4f)
+            {
+                osc->getGlitchFX().setDownsampleHz(1000.0f + rng.nextFloat() * 8000.0f);
+                osc->getGlitchFX().setDownsampleMix(0.4f + rng.nextFloat() * 0.5f);
+            }
+            src = osc;
+        }
+
+        if (src)
+        {
+            voiceManager.addSource(src);
+        }
+    }
+}
+
 } // namespace GlitchDSP

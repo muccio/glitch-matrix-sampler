@@ -1,5 +1,5 @@
 import React from 'react';
-import { Volume2, AlertOctagon, Activity, Layers, PlaySquare, Save } from 'lucide-react';
+import { Volume2, AlertOctagon, Activity, Layers, PlaySquare, Save, Dices } from 'lucide-react';
 import { NativeBridge } from '../services/NativeBridge';
 import { VoiceStats } from '../types/matrix';
 
@@ -54,26 +54,41 @@ export const GlobalBar: React.FC<GlobalBarProps> = ({
         </div>
       </div>
 
-      {/* Preset Selector */}
-      <div className="flex items-center gap-2">
-        <span className="text-xs text-glitch-dim uppercase">Preset:</span>
-        <select
-          onChange={(e) => NativeBridge.loadPreset(parseInt(e.target.value))}
-          className="bg-glitch-panel text-glitch-text text-xs border border-glitch-border rounded px-2 py-1.5 focus:border-glitch-cyan outline-none cursor-pointer hover:border-glitch-cyan/60"
-        >
-          {PRESETS.map((name, idx) => (
-            <option key={idx} value={idx}>
-              {name}
-            </option>
-          ))}
-        </select>
+      {/* Preset & Randomize Controls */}
+      <div className="flex items-center gap-3">
+        {/* Randomize Glitch Set Button */}
         <button
-          onClick={() => NativeBridge.savePreset("")}
-          title="Save Preset JSON"
-          className="p-1.5 rounded bg-glitch-panel hover:bg-glitch-card text-glitch-dim hover:text-glitch-cyan border border-glitch-border"
+          onClick={() => NativeBridge.randomizeSet()}
+          title="Randomize Glitch Set - Generate a randomized set of clicks, textures & glitch sources"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-glitch-cyan/15 border border-glitch-cyan/50 hover:bg-glitch-cyan hover:text-glitch-dark text-glitch-cyan text-xs font-bold transition-all shadow-sm hover:shadow-[0_0_12px_rgba(0,240,255,0.4)] active:scale-95 group"
         >
-          <Save className="w-3.5 h-3.5" />
+          <Dices className="w-4 h-4 transition-transform duration-500 group-hover:rotate-180 text-glitch-cyan group-hover:text-glitch-dark" />
+          <span className="tracking-wider">RANDOM SET</span>
         </button>
+
+        <div className="h-4 w-[1px] bg-glitch-border" />
+
+        {/* Preset Selector */}
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-glitch-dim uppercase">Preset:</span>
+          <select
+            onChange={(e) => NativeBridge.loadPreset(parseInt(e.target.value))}
+            className="bg-glitch-panel text-glitch-text text-xs border border-glitch-border rounded px-2 py-1.5 focus:border-glitch-cyan outline-none cursor-pointer hover:border-glitch-cyan/60"
+          >
+            {PRESETS.map((name, idx) => (
+              <option key={idx} value={idx}>
+                {name}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={() => NativeBridge.savePreset("")}
+            title="Save Preset JSON"
+            className="p-1.5 rounded bg-glitch-panel hover:bg-glitch-card text-glitch-dim hover:text-glitch-cyan border border-glitch-border"
+          >
+            <Save className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
 
       {/* Output Meter & Master Fader & Panic */}

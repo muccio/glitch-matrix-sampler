@@ -461,6 +461,17 @@ juce::WebBrowserComponent::Options WebBridge::setupOptions(
         completion(stateVar);
     });
 
+    // 12. randomizeSet()
+    options = options.withNativeFunction("randomizeSet", [&proc, getBrowserFn](const juce::Array<juce::var>&, juce::WebBrowserComponent::NativeFunctionCompletion completion) {
+        StateSerializer::generateRandomGlitchSet(proc.getVoiceManager(), &proc.getFormatManager());
+        auto stateVar = StateSerializer::serializeStateToVar(proc.getVoiceManager());
+        if (auto* b = getBrowserFn())
+        {
+            b->emitEventIfBrowserIsVisible("stateSync", stateVar);
+        }
+        completion(stateVar);
+    });
+
     return options;
 }
 

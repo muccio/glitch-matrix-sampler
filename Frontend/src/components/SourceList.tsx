@@ -1,7 +1,7 @@
 import React from 'react';
 import { SoundSourceData, SourceType } from '../types/matrix';
 import { SourceCard } from './SourceCard';
-import { Plus, Cpu, Radio, Disc, Zap } from 'lucide-react';
+import { Plus, Cpu, Radio, Disc, Zap, Dices } from 'lucide-react';
 import { NativeBridge } from '../services/NativeBridge';
 
 interface SourceListProps {
@@ -30,7 +30,14 @@ export const SourceList: React.FC<SourceListProps> = ({
             <span className="w-1.5 h-1.5 rounded-sm bg-glitch-cyan" />
             SOUND SOURCES ({sources.length})
           </span>
-          <span className="text-[10px] text-glitch-dim">UNLIMITED DYNAMIC</span>
+          <button
+            onClick={() => NativeBridge.randomizeSet()}
+            title="Generate Random Glitch Set"
+            className="flex items-center gap-1 px-2 py-0.5 rounded bg-glitch-cyan/10 hover:bg-glitch-cyan/20 text-glitch-cyan border border-glitch-cyan/30 hover:border-glitch-cyan text-[10px] font-bold transition-all active:scale-95 group"
+          >
+            <Dices className="w-3 h-3 group-hover:rotate-180 transition-transform duration-300" />
+            <span>RANDOM KIT</span>
+          </button>
         </div>
 
         {/* 4 Quick Add Buttons */}

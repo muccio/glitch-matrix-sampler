@@ -27,6 +27,9 @@ public:
     // Factory Presets
     static juce::Array<juce::var> getFactoryPresets();
     static void loadFactoryPreset(int presetIndex, VoiceManager& voiceManager, juce::AudioFormatManager* formatManager = nullptr);
+
+    // Random Glitch Set Generator
+    static void generateRandomGlitchSet(VoiceManager& voiceManager, juce::AudioFormatManager* formatManager = nullptr);
 };
 
 } // namespace GlitchDSP

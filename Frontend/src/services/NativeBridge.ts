@@ -331,6 +331,104 @@ class NativeBridgeService {
         this.notifyStateListeners({ ...this.mockState });
         break;
       }
+      case 'randomizeSet': {
+        const archetype = Math.floor(Math.random() * 4);
+        const numSources = 3 + Math.floor(Math.random() * 3); // 3 to 5 sources
+        const isKitMapping = Math.random() < 0.6;
+        const kitNotes = [60, 62, 64, 65, 67, 69, 71, 72];
+        const newSources: SoundSourceData[] = [];
+
+        for (let i = 0; i < numSources; i++) {
+          const id = i + 1;
+          const assignedNote = isKitMapping ? kitNotes[i % kitNotes.length] : -1;
+          const pan = Math.min(1.0, Math.max(-1.0, -0.7 + (1.4 / Math.max(1, numSources - 1)) * i + (Math.random() - 0.5) * 0.2));
+          const chokeGroup = (archetype === 0 || archetype === 3) ? (1 + (i % 2)) : (Math.random() > 0.5 ? 1 : 0);
+
+          let typeChoice: SourceType;
+          if (archetype === 0) {
+            typeChoice = (i === 0 || i === 1) ? 'Click' : (i === 2 ? 'Noise' : (Math.random() > 0.5 ? 'Click' : 'Oscillator'));
+          } else if (archetype === 1) {
+            typeChoice = (i === 0) ? 'Noise' : (i === 1 ? 'Oscillator' : (i === 2 ? 'Click' : (Math.random() > 0.5 ? 'Noise' : 'Click')));
+          } else if (archetype === 2) {
+            typeChoice = (i === 0) ? 'Oscillator' : (i === 1 ? 'Click' : (i === 2 ? 'Noise' : 'Oscillator'));
+          } else {
+            typeChoice = (i % 2 === 0) ? 'Click' : (i === 1 ? 'Noise' : 'Oscillator');
+          }
+
+          const hasBitcrush = Math.random() < 0.45;
+          const hasDownsample = Math.random() < 0.4;
+          const hasStutter = typeChoice === 'Oscillator' && Math.random() < 0.6;
+
+          const base: SoundSourceData = {
+            id,
+            name: `${typeChoice} ${id}`,
+            type: typeChoice,
+            assignedNote,
+            outputBus: 0,
+            chokeGroup,
+            muted: false,
+            soloed: false,
+            gain: parseFloat((0.68 + Math.random() * 0.16).toFixed(2)),
+            pan: parseFloat(pan.toFixed(2)),
+            pitchSemi: 0,
+            pitchFine: 0,
+            attackMs: parseFloat((0.01 + Math.random() * 1.5).toFixed(2)),
+            holdMs: 0,
+            decayMs: Math.floor(15 + Math.random() * 180),
+            sustain: 0,
+            releaseMs: Math.floor(10 + Math.random() * 40),
+            curve: parseFloat((-0.8 + Math.random() * 0.4).toFixed(2)),
+            bitDepth: hasBitcrush ? Math.floor(3 + Math.random() * 6) : 16,
+            bitcrushMix: hasBitcrush ? parseFloat((0.4 + Math.random() * 0.5).toFixed(2)) : 0,
+            downsampleHz: hasDownsample ? Math.floor(800 + Math.random() * 6000) : 44100,
+            downsampleMix: hasDownsample ? parseFloat((0.4 + Math.random() * 0.5).toFixed(2)) : 0,
+            stutterHz: hasStutter ? Math.floor(6 + Math.random() * 26) : 8,
+            stutterDuty: hasStutter ? parseFloat((0.35 + Math.random() * 0.35).toFixed(2)) : 0.5,
+            stutterMix: hasStutter ? parseFloat((0.5 + Math.random() * 0.45).toFixed(2)) : 0,
+            stutterSync: false,
+            stutterDivision: [1, 2, 4, 8][Math.floor(Math.random() * 4)]
+          };
+
+          if (typeChoice === 'Click') {
+            const clickType = Math.floor(Math.random() * 4);
+            const clickNames = ["Dirac", "ResoPop", "Chirp", "BitPulse"];
+            base.name = `${clickNames[clickType]} ${id}`;
+            base.clickType = clickType;
+            base.clickWidthSamples = 1 + Math.floor(Math.random() * 4);
+            base.clickFrequency = Math.floor(400 + Math.random() * 3200);
+            base.clickDamping = parseFloat((0.4 + Math.random() * 0.45).toFixed(2));
+            base.clickPolarity = Math.random() > 0.5 ? 1 : 0;
+            base.clickPitchTrack = Math.random() > 0.5;
+            base.attackMs = 0.01;
+            base.decayMs = Math.floor(8 + Math.random() * 45);
+          } else if (typeChoice === 'Noise') {
+            const noiseType = Math.floor(Math.random() * 4);
+            const noiseNames = ["WhiteBurst", "PinkCrackle", "Poisson", "HashNoise"];
+            base.name = `${noiseNames[noiseType]} ${id}`;
+            base.noiseType = noiseType;
+            base.crackleDensity = Math.floor(200 + Math.random() * 2400);
+            base.hashRate = Math.floor(800 + Math.random() * 8000);
+          } else {
+            const waveIdx = Math.floor(Math.random() * 5);
+            const waveNames = ["GlitchSine", "SquareHit", "SawTooth", "SubTriangle", "FoldWave"];
+            base.name = `${waveNames[waveIdx]} ${id}`;
+            base.waveform = waveIdx;
+            base.pulseWidth = parseFloat((0.2 + Math.random() * 0.6).toFixed(2));
+            base.glitchMorph = parseFloat((0.1 + Math.random() * 0.8).toFixed(2));
+            const semis = [-24, -12, 0, 7, 12, 19, 24];
+            base.pitchSemi = semis[Math.floor(Math.random() * semis.length)];
+            base.pitchFine = Math.floor((Math.random() - 0.5) * 20);
+            base.frequency = 440;
+            base.pitchTrack = true;
+          }
+
+          newSources.push(base);
+        }
+
+        this.mockState.sources = newSources;
+        this.notifyStateListeners({ ...this.mockState });
+        break;
+      }
     }
   }
 
@@ -377,6 +475,10 @@ class NativeBridgeService {
 
   public savePreset(presetJson: string) {
     this.callNative('savePreset', presetJson);
+  }
+
+  public randomizeSet() {
+    this.callNative('randomizeSet');
   }
 
   public noteOn(note: number, velocity: number = 0.8) {
