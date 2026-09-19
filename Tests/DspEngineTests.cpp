@@ -1032,23 +1032,28 @@ int main()
             StateSerializer::generateRandomGlitchSet(vm, &formatManager);
             auto sources = vm.getSourcesCopy();
 
-            ASSERT_TRUE(sources.size() >= 3 && sources.size() <= 5, "Random glitch set must produce 3-5 sources");
+            ASSERT_TRUE(sources.size() == 16, "Random glitch set must produce exactly 16 sources");
 
-            for (const auto& src : sources)
+            for (size_t i = 0; i < sources.size(); ++i)
             {
+                const auto& src = sources[i];
                 ASSERT_TRUE(src != nullptr, "Source must not be null");
                 ASSERT_TRUE(src->getId() > 0, "Source ID must be > 0");
                 ASSERT_TRUE(src->getGain() >= 0.5f && src->getGain() <= 1.0f, "Gain should be in a safe range");
                 ASSERT_TRUE(src->getPan() >= -1.0f && src->getPan() <= 1.0f, "Pan must be in [-1, 1]");
+
+                int expectedNote = 60 + static_cast<int>(i) * 2;
+                ASSERT_TRUE(src->getAssignedNote() == expectedNote, "Source assigned note must match 16-note whole-tone series starting from C3 (60 + i*2)");
             }
 
-            // Test audio processing across multiple blocks with MIDI notes
+            // Test audio processing across multiple blocks with MIDI notes across the whole-tone scale (60..90)
             juce::AudioBuffer<float> buffer(2, blockSize);
             buffer.clear();
             juce::MidiBuffer midi;
-            midi.addEvent(juce::MidiMessage::noteOn(1, 60, 0.9f), 0);
-            midi.addEvent(juce::MidiMessage::noteOn(1, 62, 0.8f), 32);
-            midi.addEvent(juce::MidiMessage::noteOn(1, 64, 0.7f), 64);
+            midi.addEvent(juce::MidiMessage::noteOn(1, 60, 0.9f), 0);   // Note 1: C3
+            midi.addEvent(juce::MidiMessage::noteOn(1, 62, 0.8f), 16);  // Note 2: D3
+            midi.addEvent(juce::MidiMessage::noteOn(1, 74, 0.75f), 32); // Note 8: D4
+            midi.addEvent(juce::MidiMessage::noteOn(1, 90, 0.85f), 64); // Note 16: F#5
             midi.addEvent(juce::MidiMessage::noteOff(1, 60), 200);
 
             vm.processBlock(buffer, midi);

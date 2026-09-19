@@ -399,36 +399,35 @@ void StateSerializer::generateRandomGlitchSet(VoiceManager& voiceManager, juce::
     // Archetypes: 0: Clicks & Cuts Kit, 1: Digital Entropy, 2: Stutter Machine, 3: Micro-Needle Array
     int archetype = rng.nextInt(4);
 
-    int numSources = 3 + rng.nextInt(3); // 3 to 5 sources
-    bool isKitMapping = (rng.nextFloat() < 0.6f); // 60% chance to map across keys 60, 62, 64, 65, 67
-    const int kitNotes[] = { 60, 62, 64, 65, 67, 69, 71, 72 };
+    const int numSources = 16;
 
     for (int i = 0; i < numSources; ++i)
     {
         int id = i + 1;
-        int assignedNote = isKitMapping ? kitNotes[i % 8] : -1;
-        float pan = -0.7f + (1.4f / juce::jmax(1, numSources - 1)) * i + (rng.nextFloat() - 0.5f) * 0.2f;
+        // 16 notes starting from Middle C (C3 / MIDI 60) spaced by 1 whole tone (2 semitones) ascending: 60..90
+        int assignedNote = 60 + (i * 2);
+        float pan = -0.75f + (1.5f / static_cast<float>(numSources - 1)) * static_cast<float>(i) + (rng.nextFloat() - 0.5f) * 0.15f;
         pan = juce::jlimit(-1.0f, 1.0f, pan);
-        int chokeGroup = (archetype == 0 || archetype == 3) ? (1 + (i % 2)) : (rng.nextBool() ? 1 : 0);
+        int chokeGroup = (archetype == 0 || archetype == 3) ? (1 + (i % 2)) : ((i % 3 == 0) ? 1 : 0);
 
         std::shared_ptr<SoundSource> src = nullptr;
 
         int typeChoice;
-        if (archetype == 0) // Clicks & Cuts Kit
+        if (archetype == 0) // Clicks & Cuts Kit: predominantly clicks, layered with noise & glitch hits
         {
-            typeChoice = (i == 0) ? 3 : ((i == 1) ? 3 : ((i == 2) ? 1 : rng.nextInt(3)));
+            typeChoice = (i % 4 == 0 || i % 4 == 1) ? 3 : ((i % 4 == 2) ? 1 : 0);
         }
-        else if (archetype == 1) // Digital Entropy
+        else if (archetype == 1) // Digital Entropy: diverse entropy mix of noise, clicks and morphing oscs
         {
-            typeChoice = (i == 0) ? 1 : ((i == 1) ? 0 : ((i == 2) ? 3 : rng.nextInt(3)));
+            typeChoice = (i % 3 == 0) ? 1 : ((i % 3 == 1) ? 3 : 0);
         }
-        else if (archetype == 2) // Stutter Machine
+        else if (archetype == 2) // Stutter Machine: heavy rhythmic oscillators & fast transients
         {
-            typeChoice = (i == 0) ? 0 : ((i == 1) ? 3 : ((i == 2) ? 1 : 0));
+            typeChoice = (i % 3 == 0) ? 0 : ((i % 3 == 1) ? 3 : 1);
         }
-        else // Micro-Transient Needle Array
+        else // Micro-Transient Needle Array: predominantly sharp micro-clicks with subtle textures
         {
-            typeChoice = (i % 2 == 0) ? 3 : ((i == 1) ? 1 : 0);
+            typeChoice = (i % 4 == 3) ? 1 : ((i % 8 == 7) ? 0 : 3);
         }
 
         // typeChoice: 0 = Oscillator, 1 = Noise, 3 = Click

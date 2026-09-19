@@ -333,26 +333,25 @@ class NativeBridgeService {
       }
       case 'randomizeSet': {
         const archetype = Math.floor(Math.random() * 4);
-        const numSources = 3 + Math.floor(Math.random() * 3); // 3 to 5 sources
-        const isKitMapping = Math.random() < 0.6;
-        const kitNotes = [60, 62, 64, 65, 67, 69, 71, 72];
+        const numSources = 16;
         const newSources: SoundSourceData[] = [];
 
         for (let i = 0; i < numSources; i++) {
           const id = i + 1;
-          const assignedNote = isKitMapping ? kitNotes[i % kitNotes.length] : -1;
-          const pan = Math.min(1.0, Math.max(-1.0, -0.7 + (1.4 / Math.max(1, numSources - 1)) * i + (Math.random() - 0.5) * 0.2));
-          const chokeGroup = (archetype === 0 || archetype === 3) ? (1 + (i % 2)) : (Math.random() > 0.5 ? 1 : 0);
+          // 16 notes starting from Middle C (C3 / MIDI 60) spaced by 1 whole tone (2 semitones) ascending: 60..90
+          const assignedNote = 60 + (i * 2);
+          const pan = Math.min(1.0, Math.max(-1.0, -0.75 + (1.5 / Math.max(1, numSources - 1)) * i + (Math.random() - 0.5) * 0.15));
+          const chokeGroup = (archetype === 0 || archetype === 3) ? (1 + (i % 2)) : ((i % 3 === 0) ? 1 : 0);
 
           let typeChoice: SourceType;
           if (archetype === 0) {
-            typeChoice = (i === 0 || i === 1) ? 'Click' : (i === 2 ? 'Noise' : (Math.random() > 0.5 ? 'Click' : 'Oscillator'));
+            typeChoice = (i % 4 === 0 || i % 4 === 1) ? 'Click' : ((i % 4 === 2) ? 'Noise' : 'Oscillator');
           } else if (archetype === 1) {
-            typeChoice = (i === 0) ? 'Noise' : (i === 1 ? 'Oscillator' : (i === 2 ? 'Click' : (Math.random() > 0.5 ? 'Noise' : 'Click')));
+            typeChoice = (i % 3 === 0) ? 'Noise' : ((i % 3 === 1) ? 'Click' : 'Oscillator');
           } else if (archetype === 2) {
-            typeChoice = (i === 0) ? 'Oscillator' : (i === 1 ? 'Click' : (i === 2 ? 'Noise' : 'Oscillator'));
+            typeChoice = (i % 3 === 0) ? 'Oscillator' : ((i % 3 === 1) ? 'Click' : 'Noise');
           } else {
-            typeChoice = (i % 2 === 0) ? 'Click' : (i === 1 ? 'Noise' : 'Oscillator');
+            typeChoice = (i % 4 === 3) ? 'Noise' : ((i % 8 === 7) ? 'Oscillator' : 'Click');
           }
 
           const hasBitcrush = Math.random() < 0.45;
