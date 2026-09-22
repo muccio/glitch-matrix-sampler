@@ -13,3 +13,4 @@ Frontend/dist/
 # IDEs
 .vscode/
 .idea/
+release_dist/
